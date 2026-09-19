@@ -1350,13 +1350,13 @@ func _build_ui():
 	var root=Control.new();root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);ui.add_child(root)
 	sanity_overlay=ColorRect.new();sanity_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);sanity_overlay.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(sanity_overlay)
 
-	hud_panel=_make_panel(Vector2(16,14),Vector2(395,120));root.add_child(hud_panel)
-	hud_location=Label.new();hud_location.position=Vector2(20,13);hud_location.add_theme_font_size_override("font_size",21);hud_panel.add_child(hud_location)
-	hud_stats=Label.new();hud_stats.position=Vector2(20,48);hud_stats.add_theme_font_size_override("font_size",16);hud_panel.add_child(hud_stats)
-	hud_status=Label.new();hud_status.position=Vector2(20,80);hud_status.add_theme_font_size_override("font_size",14);hud_panel.add_child(hud_status)
+	hud_panel=_make_panel(Vector2(18,16),Vector2(405,108));root.add_child(hud_panel)
+	hud_location=Label.new();hud_location.position=Vector2(20,12);hud_location.add_theme_font_size_override("font_size",22);hud_panel.add_child(hud_location)
+	hud_stats=Label.new();hud_stats.position=Vector2(20,45);hud_stats.add_theme_font_size_override("font_size",16);hud_panel.add_child(hud_stats)
+	hud_status=Label.new();hud_status.position=Vector2(20,75);hud_status.add_theme_font_size_override("font_size",14);hud_panel.add_child(hud_status)
 
-	objective_panel=_make_panel(Vector2(820,14),Vector2(445,132));root.add_child(objective_panel)
-	objective_label=RichTextLabel.new();objective_label.bbcode_enabled=true;objective_label.position=Vector2(18,12);objective_label.size=Vector2(410,105);objective_label.add_theme_font_size_override("normal_font_size",15);objective_panel.add_child(objective_label)
+	objective_panel=_make_panel(Vector2(815,16),Vector2(445,108));root.add_child(objective_panel)
+	objective_label=RichTextLabel.new();objective_label.bbcode_enabled=true;objective_label.position=Vector2(18,10);objective_label.size=Vector2(410,88);objective_label.add_theme_font_size_override("normal_font_size",15);objective_panel.add_child(objective_label)
 
 	prompt_label=Label.new();prompt_label.position=Vector2(455,646);prompt_label.size=Vector2(370,44);prompt_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;prompt_label.add_theme_font_size_override("font_size",20);root.add_child(prompt_label)
 	message_label=Label.new();message_label.position=Vector2(350,30);message_label.size=Vector2(580,90);message_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;message_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;message_label.add_theme_font_size_override("font_size",18);root.add_child(message_label)
@@ -1396,22 +1396,34 @@ func _new_game():
 	)
 
 func _build_dialogue_ui(root:Control):
-	dialogue_panel=_make_panel(Vector2(105,430),Vector2(1070,250));root.add_child(dialogue_panel);dialogue_panel.visible=false
-	dialogue_text=RichTextLabel.new();dialogue_text.bbcode_enabled=true;dialogue_text.position=Vector2(30,24);dialogue_text.size=Vector2(710,188);dialogue_text.add_theme_font_size_override("normal_font_size",21);dialogue_text.add_theme_font_size_override("bold_font_size",23);dialogue_panel.add_child(dialogue_text)
-	dialogue_choices=VBoxContainer.new();dialogue_choices.position=Vector2(770,22);dialogue_choices.size=Vector2(270,205);dialogue_panel.add_child(dialogue_choices)
+	dialogue_panel=_make_panel(Vector2(70,438),Vector2(1140,245));root.add_child(dialogue_panel);dialogue_panel.visible=false
+	dialogue_text=RichTextLabel.new();dialogue_text.bbcode_enabled=true;dialogue_text.position=Vector2(28,24);dialogue_text.size=Vector2(760,190);dialogue_text.add_theme_font_size_override("normal_font_size",22);dialogue_text.add_theme_font_size_override("bold_font_size",24);dialogue_panel.add_child(dialogue_text)
+	dialogue_choices=VBoxContainer.new();dialogue_choices.position=Vector2(815,24);dialogue_choices.size=Vector2(295,190);dialogue_panel.add_child(dialogue_choices)
 
 func _build_inventory_ui(root:Control):
-	inventory_overlay=ColorRect.new();inventory_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);inventory_overlay.color=Color(0.004,0.003,0.004,0.97);root.add_child(inventory_overlay);inventory_overlay.visible=false
-	var frame=_make_panel(Vector2(90,45),Vector2(1100,625));root=frame;inventory_overlay.add_child(frame)
-	inventory_desc=RichTextLabel.new();inventory_desc.bbcode_enabled=true;inventory_desc.position=Vector2(30,22);inventory_desc.size=Vector2(1040,100);inventory_desc.add_theme_font_size_override("normal_font_size",19);frame.add_child(inventory_desc)
-	var tabs=HBoxContainer.new();tabs.position=Vector2(30,132);frame.add_child(tabs)
+	inventory_overlay=ColorRect.new();inventory_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);inventory_overlay.color=Color(0.002,0.002,0.003,0.985);root.add_child(inventory_overlay);inventory_overlay.visible=false
+	var frame=_make_panel(Vector2(105,48),Vector2(1070,620));inventory_overlay.add_child(frame)
+
+	var header=Label.new()
+	header.text="INVENTORY"
+	header.position=Vector2(28,18)
+	header.size=Vector2(1015,42)
+	header.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size",28)
+	frame.add_child(header)
+
+	var tabs=HBoxContainer.new();tabs.position=Vector2(30,72);frame.add_child(tabs)
 	for tab in ["Item","Weapon","Armor","Books","Key Items"]:
-		var b=_button(tab);b.custom_minimum_size=Vector2(198,44);var lt=tab;b.pressed.connect(func():_set_inventory_tab(lt));tabs.add_child(b)
-	var scroll=ScrollContainer.new();scroll.position=Vector2(30,192);scroll.size=Vector2(610,350);frame.add_child(scroll)
-	inventory_list=VBoxContainer.new();inventory_list.custom_minimum_size=Vector2(580,340);scroll.add_child(inventory_list)
-	inventory_status=RichTextLabel.new();inventory_status.bbcode_enabled=true;inventory_status.position=Vector2(675,200);inventory_status.size=Vector2(380,220);inventory_status.add_theme_font_size_override("normal_font_size",18);frame.add_child(inventory_status)
-	inventory_use_button=_button("Use");inventory_use_button.position=Vector2(675,465);inventory_use_button.size=Vector2(175,52);inventory_use_button.visible=false;inventory_use_button.pressed.connect(_inventory_use_selected);frame.add_child(inventory_use_button)
-	var close=_button("Close [Esc]");close.position=Vector2(875,465);close.size=Vector2(175,52);close.pressed.connect(_close_inventory);frame.add_child(close)
+		var b=_button(tab);b.custom_minimum_size=Vector2(196,46);var lt=tab;b.pressed.connect(func():_set_inventory_tab(lt));tabs.add_child(b)
+
+	var scroll=ScrollContainer.new();scroll.position=Vector2(30,138);scroll.size=Vector2(470,390);frame.add_child(scroll)
+	inventory_list=VBoxContainer.new();inventory_list.custom_minimum_size=Vector2(445,380);inventory_list.add_theme_constant_override("separation",6);scroll.add_child(inventory_list)
+
+	inventory_desc=RichTextLabel.new();inventory_desc.bbcode_enabled=true;inventory_desc.position=Vector2(535,145);inventory_desc.size=Vector2(500,180);inventory_desc.add_theme_font_size_override("normal_font_size",20);inventory_desc.add_theme_font_size_override("bold_font_size",22);frame.add_child(inventory_desc)
+	inventory_status=RichTextLabel.new();inventory_status.bbcode_enabled=true;inventory_status.position=Vector2(535,335);inventory_status.size=Vector2(500,155);inventory_status.add_theme_font_size_override("normal_font_size",18);frame.add_child(inventory_status)
+
+	inventory_use_button=_button("USE / EQUIP");inventory_use_button.position=Vector2(535,520);inventory_use_button.size=Vector2(230,54);inventory_use_button.visible=false;inventory_use_button.pressed.connect(_inventory_use_selected);frame.add_child(inventory_use_button)
+	var close=_button("BACK  [Esc]");close.position=Vector2(805,520);close.size=Vector2(230,54);close.pressed.connect(_close_inventory);frame.add_child(close)
 
 func _build_battle_ui(root:Control):
 	battle_overlay=ColorRect.new();battle_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);battle_overlay.color=Color(0.003,0.002,0.003,1);root.add_child(battle_overlay);battle_overlay.visible=false
@@ -1538,18 +1550,24 @@ func _toggle_fullscreen():
 
 func _make_panel(pos:Vector2,size:Vector2)->Panel:
 	var p=Panel.new();p.position=pos;p.size=size
-	var sb=StyleBoxFlat.new();sb.bg_color=Color(0.012,0.009,0.010,0.95);sb.border_color=Color("#716353");sb.set_border_width_all(2);p.add_theme_stylebox_override("panel",sb)
-	if lucifer_panel:
-		var bg=NinePatchRect.new();bg.texture=lucifer_panel;bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);bg.patch_margin_left=16;bg.patch_margin_right=16;bg.patch_margin_top=16;bg.patch_margin_bottom=16;bg.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST;bg.modulate=Color(0.72,0.68,0.64,0.88);bg.mouse_filter=Control.MOUSE_FILTER_IGNORE;p.add_child(bg)
+	var sb=StyleBoxFlat.new()
+	sb.bg_color=Color(0.015,0.013,0.014,0.96)
+	sb.border_color=Color(0.62,0.58,0.55,1.0)
+	sb.set_border_width_all(2)
+	sb.corner_radius_top_left=2;sb.corner_radius_top_right=2;sb.corner_radius_bottom_left=2;sb.corner_radius_bottom_right=2
+	p.add_theme_stylebox_override("panel",sb)
 	return p
 
 func _button(text:String)->Button:
-	var b=Button.new();b.text=text;b.add_theme_font_size_override("font_size",16)
-	if lucifer_button:
-		var normal=StyleBoxTexture.new();normal.texture=lucifer_button
-		var hover=StyleBoxTexture.new();hover.texture=lucifer_button_active if lucifer_button_active else lucifer_button
-		var pressed=StyleBoxTexture.new();pressed.texture=lucifer_button_pressed if lucifer_button_pressed else lucifer_button
-		b.add_theme_stylebox_override("normal",normal);b.add_theme_stylebox_override("hover",hover);b.add_theme_stylebox_override("pressed",pressed)
+	var b=Button.new()
+	b.text=text
+	b.add_theme_font_size_override("font_size",18)
+	b.add_theme_color_override("font_color",Color(0.92,0.90,0.86))
+	b.add_theme_color_override("font_hover_color",Color.WHITE)
+	var normal=StyleBoxFlat.new();normal.bg_color=Color(0.035,0.030,0.032,1);normal.border_color=Color(0.34,0.32,0.31,1);normal.set_border_width_all(1)
+	var hover=StyleBoxFlat.new();hover.bg_color=Color(0.27,0.20,0.22,1);hover.border_color=Color(0.70,0.62,0.61,1);hover.set_border_width_all(2)
+	var pressed=StyleBoxFlat.new();pressed.bg_color=Color(0.38,0.27,0.29,1);pressed.border_color=Color(0.82,0.74,0.71,1);pressed.set_border_width_all(2)
+	b.add_theme_stylebox_override("normal",normal);b.add_theme_stylebox_override("hover",hover);b.add_theme_stylebox_override("pressed",pressed);b.add_theme_stylebox_override("focus",hover)
 	return b
 
 func _update_hud():
@@ -1563,6 +1581,6 @@ func _update_hud():
 	if bool(party["Maren"]["joined"]):status.append("PARTY: MAREN")
 	hud_status.text=(" | ".join(status) if status.size()>0 else "Stable")+"   COINS: "+str(coins)
 	if objective_label:
-		objective_label.text="[color=#d2b67c][b]OBJECTIVE[/b][/color]\n"+_current_objective()+"\n\n[color=#8f887f]Q: Journal   F11: Fullscreen[/color]"
+		objective_label.text="[color=#d8c398][b]NEXT[/b][/color]  "+_current_objective()+"\n[color=#817b75]Q Journal   I Inventory   F11 Fullscreen[/color]"
 	if inventory_overlay and inventory_overlay.visible:
 		inventory_status.text="[b]STATUS[/b]\nBODY "+str(int(body))+"/"+str(int(max_body))+"\nMIND "+str(int(mind))+"\nHUNGER "+str(int(hunger))+"\nTORCH "+str(int(torch))+"\n\nWeapon: "+equipped_weapon+"\nArmor: "+equipped_armor+"\nCoins: "+str(coins)
