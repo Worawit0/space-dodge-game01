@@ -1,0 +1,62 @@
+name: Inspect Lucifer Key Assets
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-2d-beauty-20260919
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-2d-beauty-20260919
+      - name: Download and inspect
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          python3 -m pip install pillow
+          mkdir -p /tmp/packs /tmp/ext
+          declare -A urls
+          urls[dungeon]=https://foozlecc.itch.io/lucifer-dungeon-tileset
+          urls[warrior]=https://foozlecc.itch.io/lucifer-warrior
+          urls[cultist]=https://foozlecc.itch.io/lucifer-cultist-enemy
+          urls[skeleton]=https://foozlecc.itch.io/lucifer-skeleton-grunt-enemy
+          urls[ui]=https://foozlecc.itch.io/lucifer-rpg-ui
+          urls[equipment]=https://foozlecc.itch.io/lucifer-equipment
+          for k in dungeon warrior cultist skeleton ui equipment; do
+            mkdir -p "/tmp/packs/$k"
+            itchio-downloader --url "${urls[$k]}" --downloadDirectory "/tmp/packs/$k"
+            z=$(find "/tmp/packs/$k" -type f -name '*.zip' | head -1)
+            mkdir -p "/tmp/ext/$k"
+            unzip -q "$z" -d "/tmp/ext/$k"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root=Path('/tmp/ext')
+          for pack in ['dungeon','warrior','cultist','skeleton','equipment']:
+              print("\n###",pack.upper())
+              for p in sorted((root/pack).rglob('*')):
+                  if not p.is_file(): continue
+                  if p.suffix.lower() in {'.png','.jpg','.jpeg'}:
+                      try:
+                          im=Image.open(p)
+                          print(f"{p.relative_to(root/pack)} | {im.size[0]}x{im.size[1]}")
+                      except Exception:
+                          pass
+          print("\n### UI KEY FILES")
+          pats=['button','panel','frame','slot','hud','bar','menu','font','cursor','icon','spritesheet']
+          count=0
+          for p in sorted((root/'ui').rglob('*.png')):
+              s=str(p).lower()
+              if any(x in s for x in pats) and 'skill icons' not in s:
+                  try:
+                      im=Image.open(p)
+                      print(f"{p.relative_to(root/'ui')} | {im.size[0]}x{im.size[1]}")
+                      count+=1
+                      if count>=220: break
+                  except: pass
+          PY
