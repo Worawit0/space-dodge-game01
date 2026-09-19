@@ -1,0 +1,90 @@
+name: Build and Test Forsaken Depths 2D
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-2d-20260919
+  workflow_dispatch:
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-2d-20260919
+
+      - name: Prepare project
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/TheForsakenDepths_2D
+          cp -a forsaken2d /tmp/TheForsakenDepths_2D
+          test -f /tmp/TheForsakenDepths_2D/project.godot
+          test -f /tmp/TheForsakenDepths_2D/main.gd
+          test -f /tmp/TheForsakenDepths_2D/assets/player.svg
+          test -f /tmp/TheForsakenDepths_2D/assets/boss.svg
+
+      - name: Download Godot 4.7.2 stable
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3             https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip             -o /tmp/godot.zip
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' | head -1)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Import project and parse scripts
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/TheForsakenDepths_2D --quit-after 3 2>&1 | tee /tmp/godot_editor.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file" /tmp/godot_editor.log; then
+            echo "Godot script/import errors found"
+            exit 1
+          fi
+
+      - name: Smoke launch main scene
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --path /tmp/TheForsakenDepths_2D --quit-after 3 2>&1 | tee /tmp/godot_game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Invalid call|Invalid get index|ERROR: Cannot open file" /tmp/godot_game.log; then
+            echo "Godot runtime errors found"
+            exit 1
+          fi
+
+      - name: Write verification report
+        run: |
+          {
+            echo "THE FORSAKEN DEPTHS 2D - VERIFIED BUILD"
+            echo "Godot: 4.7.2 stable"
+            echo "Editor import/parse: PASS"
+            echo "Headless main-scene smoke launch: PASS"
+            echo
+            echo "Core systems included:"
+            echo "- Top-down exploration"
+            echo "- Torch darkness"
+            echo "- Body/Mind/Hunger"
+            echo "- Full-screen inventory"
+            echo "- Dialogue choices and party"
+            echo "- Ritual system"
+            echo "- Limited save"
+            echo "- Body-part battle"
+            echo "- Boss and 3 endings"
+          } > /tmp/TheForsakenDepths_2D/VERIFIED_BUILD.txt
+
+      - name: Package
+        run: |
+          cd /tmp
+          zip -qr TheForsakenDepths_2D_COMPLETE.zip TheForsakenDepths_2D
+          unzip -l TheForsakenDepths_2D_COMPLETE.zip | tail -40
+          test -s TheForsakenDepths_2D_COMPLETE.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_2D_COMPLETE
+          path: /tmp/TheForsakenDepths_2D_COMPLETE.zip
+          compression-level: 0
+          if-no-files-found: error
