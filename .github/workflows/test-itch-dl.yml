@@ -1,0 +1,24 @@
+name: Test itch-dl Lucifer
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-2d-beauty-20260919
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-2d-beauty-20260919
+      - name: Install itch-dl
+        run: |
+          python3 -m pip install --user itch-dl
+          python3 -m itch_dl --help || ~/.local/bin/itch-dl --help
+      - name: Try public free asset
+        run: |
+          mkdir -p /tmp/itchtest
+          ~/.local/bin/itch-dl https://foozlecc.itch.io/lucifer-dungeon-tileset --download-to /tmp/itchtest || true
+          find /tmp/itchtest -maxdepth 4 -type f -printf '%p %s bytes\n' | head -80
