@@ -238,12 +238,25 @@ func _build_world_visuals():
 	_build_collision_layout()
 
 func _build_collision_layout():
-	# Solid wall blocks are drawn and collided together so the visual dungeon and physics agree.
+	# The same rectangles are both visible walls and physics. Nothing decorative is fake collision.
 	var blocks = [
-		[Vector2(-450,-260),Vector2(210,180)],[Vector2(-430,270),Vector2(250,170)],[Vector2(120,-285),Vector2(270,120)],[Vector2(360,250),Vector2(250,150)],
-		[Vector2(760,-275),Vector2(210,140)],[Vector2(900,275),Vector2(300,140)],[Vector2(1430,-270),Vector2(260,150)],[Vector2(1610,260),Vector2(240,150)],
-		[Vector2(1960,-270),Vector2(220,150)],[Vector2(2140,270),Vector2(260,140)],[Vector2(2680,-270),Vector2(280,140)],[Vector2(2850,260),Vector2(220,150)],
-		[Vector2(3180,-270),Vector2(230,150)],[Vector2(3320,270),Vector2(270,150)],[Vector2(4100,-270),Vector2(270,150)],[Vector2(4330,260),Vector2(260,150)]
+		# OLD PRISON: cells and broken masonry
+		[Vector2(-430,-260),Vector2(220,150)],[Vector2(-120,-285),Vector2(220,110)],[Vector2(285,-270),Vector2(260,135)],
+		[Vector2(-375,270),Vector2(260,145)],[Vector2(120,285),Vector2(250,115)],[Vector2(430,255),Vector2(140,170)],
+		[Vector2(-80,-70),Vector2(65,170)],
+		# INFIRMARY: operating rooms and storage
+		[Vector2(770,-270),Vector2(190,145)],[Vector2(1150,-285),Vector2(260,110)],[Vector2(1570,-255),Vector2(250,155)],
+		[Vector2(820,275),Vector2(235,135)],[Vector2(1370,275),Vector2(270,135)],[Vector2(1660,230),Vector2(150,220)],
+		[Vector2(1250,75),Vector2(70,155)],
+		# TEMPLE: side chapels around a central ritual aisle
+		[Vector2(1980,-270),Vector2(220,145)],[Vector2(2340,-290),Vector2(190,105)],[Vector2(2760,-255),Vector2(250,165)],
+		[Vector2(2020,270),Vector2(240,145)],[Vector2(2740,270),Vector2(260,145)],
+		[Vector2(2220,70),Vector2(70,150)],[Vector2(2700,-20),Vector2(70,150)],
+		# HEART: columns leave a clear boss arena and route to altar
+		[Vector2(3200,-270),Vector2(260,150)],[Vector2(3200,270),Vector2(260,150)],
+		[Vector2(4050,-275),Vector2(270,145)],[Vector2(4050,275),Vector2(270,145)],
+		[Vector2(3460,-210),Vector2(90,130)],[Vector2(3460,210),Vector2(90,130)],
+		[Vector2(3950,-190),Vector2(90,130)],[Vector2(3950,190),Vector2(90,130)]
 	]
 	for spec in blocks:
 		_make_wall_block(spec[0],spec[1])
@@ -353,37 +366,45 @@ func _add_strip_animation(frames:SpriteFrames,name:String,path:String,frame_widt
 		frames.add_frame(name,atlas)
 
 func _build_world_content():
-	_make_pickup("rust_key",Vector2(-260,-220),"Rust Key","key","A corroded key. Its teeth are dark with old blood.","")
-	_make_pickup("prison_ration",Vector2(210,220),"Ration","item","Dry food. Barely edible.","")
-	_make_pickup("coin_prison",Vector2(350,245),"Old Coin","coin","A worn coin stamped with a bell.","")
-	_make_enemy("ghoul_prison",Vector2(260,-80),"Starved Gaoler","skeleton",62,13,false)
+	# CHAPTER I
+	_make_pickup("rust_key",Vector2(-320,-150),"Rust Key","key","A corroded key. The tag reads CELL BLOCK E.","")
+	_make_pickup("prison_ration",Vector2(120,215),"Ration","item","Dry food. Barely edible.","")
+	_make_pickup("coin_prison",Vector2(355,170),"Old Coin","coin","A worn coin stamped with a bell.","")
+	_make_lore("prison_note",Vector2(-500,65),"Blood-stained Letter","The last guard wrote: [i]We sealed the eastern gate, but the ringing continued from below. The prisoners started answering it in their sleep.[/i]")
+	_make_enemy("maw_prison",Vector2(210,-70),"Maw Wretch","demon_maw",78,15,false)
 	_make_gate("prison_gate",Vector2(600,0),"Rust Key","prison_gate_open")
 
-	_make_npc("maren",Vector2(870,-110),"Maren","maren",Color(0.72,0.83,0.92))
-	_make_pickup("blue_vial_1",Vector2(1310,190),"Blue Vial","item","A cold restorative.","")
-	_make_pickup("bandage_1",Vector2(1460,-210),"Bandage","item","Clean enough to stop bleeding.","")
-	_make_pickup("coin_infirmary",Vector2(1530,250),"Old Coin","coin","A worn coin stamped with a bell.","")
-	_make_pickup("axe_1",Vector2(1160,245),"Bearded Axe","weapon","A heavy common axe.","res://assets/lucifer/equipment/bearded_axe.png")
-	_make_enemy("ghoul_infirmary",Vector2(1580,80),"Mutilated Patient","skeleton",72,15,false)
-	_make_shrine("deep_shrine",Vector2(1110,0))
+	# CHAPTER II
+	_make_npc("maren",Vector2(820,-95),"Maren","maren",Color(0.72,0.83,0.92))
+	_make_pickup("blue_vial_1",Vector2(1325,170),"Blue Vial","item","A cold restorative.","")
+	_make_pickup("bandage_1",Vector2(1480,-175),"Bandage","item","Clean enough to stop bleeding.","")
+	_make_pickup("coin_infirmary",Vector2(1540,185),"Old Coin","coin","A worn coin stamped with a bell.","")
+	_make_pickup("axe_1",Vector2(1030,215),"Bearded Axe","weapon","A heavy common axe.","res://assets/lucifer/equipment/bearded_axe.png")
+	_make_lore("infirmary_chart",Vector2(1020,-140),"Patient Chart","Every patient developed the same symptom: they heard a bell that no one else could hear. The final entry simply says: [i]DO NOT LET THEM SLEEP.[/i]")
+	_make_enemy("husk_infirmary",Vector2(1570,45),"Bell Husk","demon_bell",92,17,false)
+	_make_shrine("deep_shrine",Vector2(1110,70))
 
-	_make_npc("sever",Vector2(2040,-160),"Priest Sever","sever",Color(0.76,0.68,0.61))
-	_make_enemy("cultist_temple",Vector2(2550,130),"Bell Cultist","cultist",88,18,false)
-	_make_ritual("ritual_circle",Vector2(2360,-30))
-	_make_pickup("book_echoes",Vector2(2790,-215),"Book of Echoes","book","A damp ritual manuscript.","")
-	_make_pickup("coin_temple",Vector2(2230,245),"Old Coin","coin","A worn coin stamped with a bell.","")
-	_make_pickup("coin_temple_2",Vector2(2860,-250),"Old Coin","coin","A second ritual coin. Three are enough for the circle.","")
-	_make_pickup("chainmail_1",Vector2(2150,235),"Chainmail Chestpiece","armor","Old chainmail with several repaired rings.","res://assets/lucifer/equipment/chainmail.png")
-	_make_pickup("greatsword_1",Vector2(2750,215),"Greatsword","weapon","A broad blade meant for two hands.","res://assets/lucifer/equipment/greatsword.png")
+	# CHAPTER III
+	_make_npc("sever",Vector2(2020,-145),"Priest Sever","sever",Color(0.76,0.68,0.61))
+	_make_enemy("cultist_temple",Vector2(2550,125),"Faceless Devotee","demon_bell",108,20,false)
+	_make_ritual("ritual_circle",Vector2(2420,-20))
+	_make_pickup("book_echoes",Vector2(2820,-185),"Book of Echoes","book","A ritual manuscript describing the Bell as a lock.","")
+	_make_pickup("coin_temple",Vector2(2140,205),"Old Coin","coin","A worn coin stamped with a bell.","")
+	_make_pickup("coin_temple_2",Vector2(2860,205),"Old Coin","coin","A second ritual coin. Three are enough for the circle.","")
+	_make_pickup("chainmail_1",Vector2(2120,120),"Chainmail Chestpiece","armor","Old chainmail with several repaired rings.","res://assets/lucifer/equipment/chainmail.png")
+	_make_pickup("greatsword_1",Vector2(2780,105),"Greatsword","weapon","A broad blade meant for two hands.","res://assets/lucifer/equipment/greatsword.png")
+	_make_lore("temple_inscription",Vector2(2860,-70),"Bell Inscription","The inscription names the Warden as a jailer. Beneath it, someone scratched: [i]The prisoner is not in the city. The city is the prison.[/i]")
 	_make_gate("temple_gate",Vector2(1800,0),"The temple is sealed from this side.","temple_gate_open")
 	_make_gate("heart_gate",Vector2(3000,0),"Bell Sigil","heart_gate_open")
 
-	_make_enemy("bell_warden",Vector2(3670,-10),"The Bell Warden","boss",220,27,true)
-	_make_altar("heart_altar",Vector2(4340,0))
+	# CHAPTER IV
+	_make_enemy("bell_warden",Vector2(3650,-10),"The Bell Warden","boss",260,29,true)
+	_make_lore("heart_warning",Vector2(4140,-40),"Final Warning","Maren's missing brother left one sentence carved into the stone: [i]If you hear me calling from the Heart, it is already too late.[/i]")
+	_make_altar("heart_altar",Vector2(4380,0))
 
-	_make_trap("trap_prison",Vector2(80,-250))
-	_make_trap("trap_infirmary",Vector2(1660,-250))
-	_make_trap("trap_temple",Vector2(2870,210))
+	_make_trap("trap_prison",Vector2(60,120))
+	_make_trap("trap_infirmary",Vector2(1640,-110))
+	_make_trap("trap_temple",Vector2(2890,120))
 
 func _make_static_rect(center:Vector2,size:Vector2):
 	var body_node = StaticBody2D.new()
@@ -448,15 +469,19 @@ func _make_enemy(id:String,pos:Vector2,label:String,art:String,enemy_body:int,da
 	add_child(holder)
 	var cs=CollisionShape2D.new()
 	var shape=CircleShape2D.new()
-	shape.radius=20.0 if not boss_enemy else 28.0
+	shape.radius=24.0 if not boss_enemy else 34.0
 	cs.shape=shape
 	holder.add_child(cs)
 	var s = AnimatedSprite2D.new()
-	s.sprite_frames = _build_enemy_frames("cultist" if art=="cultist" or art=="boss" else "skeleton")
-	s.scale = Vector2(2.0,2.0) if not boss_enemy else Vector2(2.8,2.8)
-	s.position = Vector2(0,-28)
+	if art.begins_with("demon_") or art=="boss":
+		s.sprite_frames = _build_horror_frames(art)
+		s.scale = Vector2(0.42,0.42) if not boss_enemy else Vector2(0.58,0.58)
+		s.position = Vector2(0,-48)
+	else:
+		s.sprite_frames = _build_enemy_frames("cultist" if art=="cultist" else "skeleton")
+		s.scale = Vector2(2.0,2.0)
+		s.position = Vector2(0,-28)
 	s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	s.modulate = Color(0.76,0.42,0.44) if boss_enemy else Color.WHITE
 	s.play("idle_down")
 	holder.add_child(s)
 	if boss_enemy:
@@ -473,6 +498,39 @@ func _make_enemy(id:String,pos:Vector2,label:String,art:String,enemy_body:int,da
 		"sprite":s,"home":pos,"wander_dir":Vector2.ZERO,"wander_time":0.0,"room_left":left,"room_right":right,
 		"speed":92.0 if boss_enemy else 68.0,"detect":260.0 if boss_enemy else 190.0
 	})
+
+func _build_horror_frames(art:String)->SpriteFrames:
+	var frames=SpriteFrames.new()
+	frames.remove_animation("default")
+	var path="res://assets/horror_warden.svg" if art=="boss" else ("res://assets/horror_maw.svg" if art=="demon_maw" else "res://assets/horror_bell_husk.svg")
+	var tex=_load_tex(path)
+	for dir in ["down","left","right","up"]:
+		var idle="idle_"+dir
+		var walk="walk_"+dir
+		frames.add_animation(idle);frames.set_animation_speed(idle,2.0);frames.set_animation_loop(idle,true)
+		frames.add_animation(walk);frames.set_animation_speed(walk,4.0);frames.set_animation_loop(walk,true)
+		if tex:
+			frames.add_frame(idle,tex)
+			frames.add_frame(walk,tex)
+	return frames
+
+func _make_lore(id:String,pos:Vector2,label:String,text:String):
+	var holder=Node2D.new()
+	holder.position=pos
+	holder.name=id
+	add_child(holder)
+	var icon=Sprite2D.new()
+	icon.texture=_load_tex("res://assets/lucifer/equipment/ragged_shirt.png")
+	icon.scale=Vector2(1.8,1.8)
+	icon.modulate=Color(0.82,0.72,0.55)
+	holder.add_child(icon)
+	var glow=PointLight2D.new()
+	glow.texture=radial_light_texture
+	glow.texture_scale=0.22
+	glow.energy=0.35
+	glow.color=Color(0.7,0.55,0.36)
+	holder.add_child(glow)
+	_register_entry({"id":id,"node":holder,"type":"lore","label":label,"text":text,"active":true})
 
 func _make_npc(id:String,pos:Vector2,label:String,kind:String,tint:Color):
 	var holder = Node2D.new()
@@ -643,7 +701,10 @@ func _update_enemies(delta):
 		body_node.velocity=velocity
 		body_node.move_and_slide()
 		_play_enemy_anim(sprite,velocity)
-		if body_node.position.distance_to(player.position)<34.0:
+		if String(entry["art"]).begins_with("demon_") or String(entry["art"])=="boss":
+			sprite.rotation=sin(elapsed*3.5+body_node.position.x*0.01)*0.035
+			sprite.scale*=1.0+sin(elapsed*5.0)*0.0008
+		if body_node.position.distance_to(player.position)<48.0:
 			enemy_battle_lock=true
 			body_node.velocity=Vector2.ZERO
 			_start_battle(entry)
@@ -754,6 +815,7 @@ func _interaction_label(e:Dictionary)->String:
 		"shrine": return "Pray at the Deep Shrine"
 		"ritual": return "Inspect ritual circle"
 		"altar": return "Approach the Heart Altar"
+		"lore": return "Inspect "+String(e["label"])
 	return "Interact"
 
 func _interact():
@@ -767,6 +829,10 @@ func _interact():
 		"shrine": _open_shrine()
 		"ritual": _open_ritual()
 		"altar": _open_ending()
+		"lore": _open_lore(e)
+
+func _open_lore(e:Dictionary):
+	_show_dialogue("[b]"+String(e["label"]).to_upper()+"[/b]\n\n"+String(e["text"]),[{"text":"Leave","call":func():_close_dialogue()}])
 
 func _take_pickup(e:Dictionary):
 	var label=String(e["label"])
@@ -909,7 +975,14 @@ func _start_battle(e:Dictionary):
 	dialogue_panel.visible=false
 	inventory_overlay.visible=false
 	var art=String(e["art"])
-	battle_enemy_art.texture=_load_tex("res://assets/lucifer/battle/"+art+".png")
+	if art=="demon_maw":
+		battle_enemy_art.texture=_load_tex("res://assets/horror_maw.svg")
+	elif art=="demon_bell":
+		battle_enemy_art.texture=_load_tex("res://assets/horror_bell_husk.svg")
+	elif art=="boss":
+		battle_enemy_art.texture=_load_tex("res://assets/horror_warden.svg")
+	else:
+		battle_enemy_art.texture=_load_tex("res://assets/lucifer/battle/"+art+".png")
 	battle_enemy_name.text=String(e["label"])
 	battle_log.text="[center][i]The encounter begins.[/i][/center]"
 	_set_part_buttons(false)
