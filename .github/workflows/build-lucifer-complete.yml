@@ -245,7 +245,7 @@ jobs:
           Download the ZIP in this branch and extract it, then import project.godot in Godot 4.7.2.
           EOF
           git add TheForsakenDepths_LUCIFER_COMPLETE.zip README.md
-          git commit -m "Publish Lucifer Complete downloadable build"
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Publish Lucifer Complete downloadable build"
           git push --force origin lucifer-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
