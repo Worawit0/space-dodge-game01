@@ -1,0 +1,22 @@
+name: Probe Poly Pizza Asset URLs
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-2d-beauty-20260919
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe pages
+        run: |
+          set -euxo pipefail
+          for URL in             "https://poly.pizza/bundle/Medieval-Village-Pack-NsHhjhlrfY"             "https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ"             "https://poly.pizza/bundle/Ultimate-Modular-Women-Pack-aCBDXDdTNN"             "https://poly.pizza/m/F2LAK03B0r"; do
+            echo "==== $URL ===="
+            curl -L -s "$URL" > /tmp/page.html
+            grep -Eo 'https?[^"''' ]+\.(glb|gltf|zip)(\?[^"''' ]*)?' /tmp/page.html | head -40 || true
+            grep -Eo 'https?[^"''' ]*(download|asset|bundle)[^"''' ]*' /tmp/page.html | head -40 || true
+            grep -oE '"[^"]*(glb|gltf|zip)[^"]*"' /tmp/page.html | head -40 || true
+          done
