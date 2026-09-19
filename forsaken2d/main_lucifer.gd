@@ -1,6 +1,6 @@
 extends Node2D
 
-const SAVE_PATH := "user://forsaken_depths_polish_v2_save.json"
+const SAVE_PATH := "user://forsaken_depths_overhaul_v3_save.json"
 const WORLD_TOP := -400.0
 const WORLD_BOTTOM := 400.0
 const WORLD_LEFT := -600.0
@@ -120,6 +120,7 @@ var story_overlay: ColorRect
 var story_title: Label
 var story_text: RichTextLabel
 var story_continue: Button
+var story_queue: Array = []
 var last_location := "OLD PRISON"
 var story_seen := {
 	"intro": false,
@@ -290,7 +291,7 @@ func _build_player():
 	player.name = "Player"
 	player.position = Vector2(-470,40)
 	player.collision_layer = 1
-	player.collision_mask = 1
+	player.collision_mask = 3
 	add_child(player)
 
 	var collision = CollisionShape2D.new()
@@ -1389,11 +1390,23 @@ func _new_game():
 	current_location="OLD PRISON"
 	last_location="OLD PRISON"
 	title_overlay.visible=false
-	_show_story_card(
-		"PROLOGUE — THE LETTER",
-		"Seven years ago, the Bell beneath the city rang once. Hundreds vanished before dawn, including your younger brother. Three nights ago a letter arrived in his handwriting:\n\n\"If the Bell rings again, do not let me answer it.\"\n\nThe trail ends beneath the condemned Old Prison. You descend with one torch, a rusted sword, and no way back.",
-		"Search the western prison cells for the Rust Key, then open the iron gate to the east."
-	)
+	_show_story_sequence([
+		{
+			"title":"บทนำ I — ระฆังที่ไม่ควรดัง",
+			"body":"เจ็ดปีก่อน ระฆังใต้เมืองดังขึ้นเพียงครั้งเดียว ก่อนรุ่งเช้ามีคนหายไปหลายร้อยคน หนึ่งในนั้นคือน้องชายของคุณ ไม่มีศพ ไม่มีร่องรอย และไม่มีใครกล้าลงไปค้นหาใต้เมืองอีก",
+			"objective":"อ่านต่อเพื่อรู้ว่าเหตุใดคุณจึงกลับมาที่นี่"
+		},
+		{
+			"title":"บทนำ II — จดหมาย",
+			"body":"สามคืนก่อน คุณได้รับจดหมายที่เขียนด้วยลายมือของน้องชาย ทั้งที่เขาหายไปเจ็ดปีแล้ว\n\n\"ถ้าระฆังดังอีกครั้ง อย่าให้ผมตอบมัน\"\n\nด้านหลังจดหมายมีแผนที่เพียงจุดเดียว: เรือนจำเก่าที่ถูกสั่งปิดตาย",
+			"objective":"ตามรอยจดหมายลงไปใต้ Old Prison"
+		},
+		{
+			"title":"บทที่ I — OLD PRISON",
+			"body":"บันไดด้านหลังพังลงทันทีที่คุณลงมาถึง ทางกลับถูกตัดขาด เหลือเพียงคบเพลิง ดาบสนิม และเสียงเหมือนโลหะสั่นอยู่ลึกลงไปใต้พื้น",
+			"objective":"ค้นหา Rust Key ทางฝั่งตะวันตก แล้วเปิดประตูเหล็กด้านตะวันออก"
+		}
+	])
 
 func _build_dialogue_ui(root:Control):
 	dialogue_panel=_make_panel(Vector2(70,438),Vector2(1140,245));root.add_child(dialogue_panel);dialogue_panel.visible=false
@@ -1487,10 +1500,10 @@ func _build_story_ui(root:Control):
 	story_text.size=Vector2(830,300)
 	story_text.add_theme_font_size_override("normal_font_size",20)
 	frame.add_child(story_text)
-	story_continue=_button("CONTINUE")
+	story_continue=_button("ต่อไป")
 	story_continue.position=Vector2(345,455)
 	story_continue.size=Vector2(300,55)
-	story_continue.pressed.connect(_close_story_card)
+	story_continue.pressed.connect(_advance_story_card)
 	frame.add_child(story_continue)
 
 func _build_ending_ui(root:Control):
@@ -1500,12 +1513,31 @@ func _build_ending_ui(root:Control):
 	var lb=_button("LOAD LAST MEMORY");lb.position=Vector2(440,555);lb.size=Vector2(400,55);lb.pressed.connect(func():ending_overlay.visible=false;_load_game());ending_overlay.add_child(lb)
 
 func _show_story_card(title_text:String,body_text:String,objective_text:String):
+	_show_story_sequence([{"title":title_text,"body":body_text,"objective":objective_text}])
+
+func _show_story_sequence(cards:Array):
+	story_queue=cards.duplicate(true)
 	game_mode="story"
 	story_overlay.visible=true
-	story_title.text=title_text
-	story_text.text=body_text+"\n\n[color=#d2b67c][b]OBJECTIVE[/b][/color]\n"+objective_text+"\n\n[color=#8f887f]WASD move • E interact • I inventory • Q journal • T torch • F11 fullscreen[/color]"
+	_display_story_page()
+
+func _display_story_page():
+	if story_queue.is_empty():
+		story_overlay.visible=false
+		game_mode="explore"
+		return
+	var page:Dictionary=story_queue[0]
+	story_title.text=String(page["title"])
+	story_text.text=String(page["body"])+"\n\n[color=#d8c398][b]เป้าหมาย[/b][/color]\n"+String(page["objective"])+"\n\n[color=#817b75]WASD เดิน • E สำรวจ/คุย • I ไอเทม • Q บันทึกเรื่องราว • T คบเพลิง • F11 เต็มจอ[/color]"
+	story_continue.text="ต่อไป" if story_queue.size()>1 else "เริ่มเล่น"
+
+func _advance_story_card():
+	if not story_queue.is_empty():
+		story_queue.pop_front()
+	_display_story_page()
 
 func _close_story_card():
+	story_queue.clear()
 	story_overlay.visible=false
 	game_mode="explore"
 
@@ -1519,26 +1551,26 @@ func _close_journal():
 	game_mode="explore"
 
 func _journal_text()->String:
-	var recap="[b]STORY[/b]\nSeven years ago the Bell rang once and hundreds vanished, including your younger brother. A new letter in his handwriting led you beneath the Old Prison. Maren believes the ritual circle can create the Bell Sigil. Priest Sever claims the Bell Warden is a lock guarding something deeper.\n\n"
-	recap+="[color=#d2b67c][b]CURRENT OBJECTIVE[/b][/color]\n"+_current_objective()+"\n\n"
-	recap+="[b]SURVIVAL[/b]\nBODY = health • MIND = sanity • HUNGER falls over time • TORCH keeps the dark away.\nBleeding drains BODY. Bandage stops it. Wax Seal is required to save at a Deep Shrine.\n\n"
-	recap+="[b]CONTROLS[/b]\nWASD Move • Shift Run • E Interact • I Inventory • Q Journal • T Torch • F9 Load • F11 Fullscreen"
+	var recap="[b]เรื่องราว[/b]\nเจ็ดปีก่อนระฆังใต้เมืองดังหนึ่งครั้งและผู้คนหลายร้อยคนหายตัวไป รวมถึงน้องชายของคุณ จดหมายลึกลับที่เขียนด้วยลายมือของเขาพาคุณกลับมายัง Old Prison ตอนนี้ Maren เชื่อว่า Ritual Circle สามารถสร้าง Bell Sigil ได้ ส่วน Priest Sever บอกว่า Bell Warden เป็นเพียง \"กุญแจล็อก\" ของสิ่งที่อยู่ลึกกว่านั้น\n\n"
+	recap+="[color=#d8c398][b]เป้าหมายปัจจุบัน[/b][/color]\n"+_current_objective()+"\n\n"
+	recap+="[b]เอาตัวรอด[/b]\nBODY = พลังชีวิต • MIND = สติ • HUNGER ลดลงตามเวลา • TORCH ช่วยต้านความมืด\nBLEEDING จะลด BODY ต่อเนื่อง ใช้ Bandage หยุดเลือด และต้องใช้ Wax Seal เพื่อเซฟที่ Deep Shrine\n\n"
+	recap+="[b]ปุ่ม[/b]\nWASD เดิน • Shift วิ่ง • E สำรวจ/คุย • I ไอเทม • Q Journal • T คบเพลิง • F9 โหลดเซฟ • F11 เต็มจอ"
 	return recap
 
 func _current_objective()->String:
 	if bool(flags["boss_dead"]):
-		return "The Warden is dead. Go east to the Heart Altar and decide the fate of the buried city."
+		return "Bell Warden ตายแล้ว → ไปทางตะวันออกและตรวจสอบ Heart Altar"
 	if not bool(flags["prison_gate_open"]):
 		if not bool(flags["rust_key"]):
-			return "OLD PRISON — Search the western cells for the Rust Key. The locked iron gate is to the east."
-		return "OLD PRISON — You have the Rust Key. Return to the iron gate on the eastern side and open it."
+			return "OLD PRISON → หา Rust Key ทางฝั่งตะวันตก แล้วกลับมาที่ประตูเหล็กด้านตะวันออก"
+		return "OLD PRISON → มี Rust Key แล้ว ไปเปิดประตูเหล็กด้านตะวันออก"
 	if not bool(flags["temple_gate_open"]):
-		return "INFIRMARY — Speak to Maren and locate the Deep Shrine. Then continue east and open the Temple gate."
+		return "INFIRMARY → คุยกับ Maren สำรวจ Deep Shrine แล้วไปทางตะวันออกสู่ Temple"
 	if not bool(flags["bell_sigil"]):
-		return "TEMPLE — Speak to Priest Sever. Use the red ritual circle. Offer 3 Old Coins ("+str(coins)+"/3) or blood to forge the Bell Sigil."
+		return "TEMPLE → คุยกับ Sever แล้วใช้ Ritual Circle สร้าง Bell Sigil (Old Coin "+str(coins)+"/3 หรือถวายเลือด)"
 	if not bool(flags["heart_gate_open"]):
-		return "TEMPLE — You have the Bell Sigil. Use it on the eastern gate leading to the Heart of the Bell."
-	return "HEART OF THE BELL — Find and defeat the Bell Warden. Then approach the Heart Altar."
+		return "TEMPLE → นำ Bell Sigil ไปใช้กับประตูด้านตะวันออก"
+	return "HEART OF THE BELL → ตามหาและกำจัด Bell Warden แล้วไปยัง Heart Altar"
 
 func _toggle_fullscreen():
 	var w=get_window()
