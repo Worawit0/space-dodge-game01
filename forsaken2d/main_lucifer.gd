@@ -269,13 +269,35 @@ func _make_wall_block(center:Vector2,size:Vector2):
 	add_child(holder)
 	var poly=Polygon2D.new()
 	poly.polygon=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2)])
-	poly.color=Color(0.075,0.060,0.055,0.96)
+	poly.color=Color(0.065,0.052,0.050,0.99)
 	holder.add_child(poly)
-	var top=Line2D.new()
-	top.points=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2),Vector2(-size.x/2,-size.y/2)])
-	top.width=5.0
-	top.default_color=Color(0.20,0.16,0.13,1.0)
-	holder.add_child(top)
+
+	# Brick courses are purely visual but use the exact same wall rectangle as physics.
+	var rows=maxi(2,int(size.y/34.0))
+	for row in range(1,rows):
+		var y=-size.y/2.0+row*(size.y/rows)
+		var line=Line2D.new()
+		line.points=PackedVector2Array([Vector2(-size.x/2,y),Vector2(size.x/2,y)])
+		line.width=2.0
+		line.default_color=Color(0.13,0.105,0.095,0.85)
+		holder.add_child(line)
+		var offset=0.0 if row%2==0 else 24.0
+		var x=-size.x/2.0+48.0+offset
+		while x<size.x/2.0:
+			var seam=Line2D.new()
+			var row_h=size.y/rows
+			seam.points=PackedVector2Array([Vector2(x,y-row_h),Vector2(x,y)])
+			seam.width=1.4
+			seam.default_color=Color(0.115,0.09,0.085,0.72)
+			holder.add_child(seam)
+			x+=96.0
+
+	var rim=Line2D.new()
+	rim.points=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2),Vector2(-size.x/2,-size.y/2)])
+	rim.width=4.0
+	rim.default_color=Color(0.22,0.17,0.14,1.0)
+	holder.add_child(rim)
+
 	var body_node=StaticBody2D.new()
 	body_node.collision_layer=1
 	body_node.collision_mask=1
