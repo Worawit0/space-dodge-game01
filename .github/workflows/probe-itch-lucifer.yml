@@ -1,0 +1,20 @@
+name: Probe Itch Lucifer Downloads
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-2d-beauty-20260919
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe itch purchase HTML
+        run: |
+          set -euxo pipefail
+          for slug in lucifer-dungeon-tileset lucifer-warrior lucifer-cultist-enemy lucifer-skeleton-grunt-enemy lucifer-rpg-ui lucifer-equipment; do
+            echo "===== $slug ====="
+            curl -L -A "Mozilla/5.0" -s "https://foozlecc.itch.io/$slug/purchase" -o "/tmp/$slug.html"
+            grep -Eo '.{0,100}(upload_id|uploadId|download|file_url|fileUrl|uploads|Foozle_[^<"]+\.zip).{0,180}' "/tmp/$slug.html" | head -80 || true
+          done
