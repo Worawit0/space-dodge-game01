@@ -1,0 +1,37 @@
+name: Inspect Lucifer Packs
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-2d-beauty-20260919
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-2d-beauty-20260919
+      - name: Download exact Lucifer CC0 packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          mkdir -p /tmp/lucifer
+          for url in             https://foozlecc.itch.io/lucifer-dungeon-tileset             https://foozlecc.itch.io/lucifer-warrior             https://foozlecc.itch.io/lucifer-cultist-enemy             https://foozlecc.itch.io/lucifer-skeleton-grunt-enemy             https://foozlecc.itch.io/lucifer-rpg-ui             https://foozlecc.itch.io/lucifer-equipment
+          do
+            itchio-downloader --url "$url" --downloadDirectory /tmp/lucifer
+          done
+          echo "=== DOWNLOADED ==="
+          find /tmp/lucifer -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+      - name: Extract and inspect
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/extracted
+          find /tmp/lucifer -type f -iname '*.zip' -print0 | while IFS= read -r -d '' z; do
+            b=$(basename "$z" .zip)
+            mkdir -p "/tmp/extracted/$b"
+            unzip -q "$z" -d "/tmp/extracted/$b"
+          done
+          echo "=== CONTENTS ==="
+          find /tmp/extracted -type f | sed 's#^/tmp/extracted/##' | sort | head -1000
