@@ -1,0 +1,281 @@
+name: Build Forsaken Depths Overhaul
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-overhaul-20260919
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-overhaul-20260919
+
+      - name: Prepare project
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenOverhaul /tmp/packs /tmp/ext /tmp/release /tmp/windows
+          cp -a forsaken2d /tmp/ForsakenOverhaul
+          cp /tmp/ForsakenOverhaul/main_lucifer.gd /tmp/ForsakenOverhaul/main.gd
+          rm -f /tmp/ForsakenOverhaul/main_lucifer.gd
+          mkdir -p /tmp/packs /tmp/ext /tmp/release /tmp/windows
+
+      - name: Download Lucifer CC0 source packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          dl () {
+            key="$1"; url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            z=$(find "/tmp/packs/$key" -type f -name '*.zip' | head -1)
+            test -n "$z"
+            unzip -q "$z" -d "/tmp/ext/$key"
+          }
+          dl dungeon https://foozlecc.itch.io/lucifer-dungeon-tileset
+          dl warrior https://foozlecc.itch.io/lucifer-warrior
+          dl cultist https://foozlecc.itch.io/lucifer-cultist-enemy
+          dl skeleton https://foozlecc.itch.io/lucifer-skeleton-grunt-enemy
+          dl ui https://foozlecc.itch.io/lucifer-rpg-ui
+          dl equipment https://foozlecc.itch.io/lucifer-equipment
+
+      - name: Normalize assets and generate clean floors
+        run: |
+          set -euxo pipefail
+          python3 -m pip install pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageStat
+          import shutil, random
+
+          random.seed(20260919)
+          EXT=Path('/tmp/ext')
+          OUT=Path('/tmp/ForsakenOverhaul/assets/lucifer')
+          for d in ['player','skeleton','cultist','dungeon','ui/title','equipment','rooms']:
+              (OUT/d).mkdir(parents=True,exist_ok=True)
+
+          def one(pack,name):
+              hits=list((EXT/pack).rglob(name))
+              if not hits:
+                  raise SystemExit(f'Missing {pack}: {name}')
+              return hits[0]
+          def copy(pack,name,dst):
+              shutil.copy2(one(pack,name),OUT/dst)
+
+          copy('dungeon','DungeonTileset.png','dungeon/tileset.png')
+          mock=Image.open(one('dungeon','DungeonTileset Mockup.png')).convert('RGBA')
+
+          for d in ['Down','Left','Right','Up']:
+              lo=d.lower()
+              copy('warrior',f'Warrior{d}Idle.png',f'player/idle_{lo}.png')
+              copy('warrior',f'Warrior{d}Walk.png',f'player/walk_{lo}.png')
+
+          sk={
+            'idle_down':'SkeletonWithSwordDownIdle.png','walk_down':'SkeletonWithSwordDownWalk.png',
+            'idle_left':'SkeletonWithSwordLefttIdle.png','walk_left':'SkeletonWithSwordLefttRun.png',
+            'idle_right':'SkeletonWithSwordRightIdle.png','walk_right':'SkeletonWithSwordRightRun.png',
+            'idle_up':'SkeletonWithSwordUpIdle.png','walk_up':'SkeletonWithSwordUpWalk.png'}
+          for dst,src in sk.items(): copy('skeleton',src,f'skeleton/{dst}.png')
+
+          cu={
+            'idle_down':'CultistDownIdle.png','walk_down':'CultistDownWalk.png',
+            'idle_left':'CultistLeftIdle.png','walk_left':'CultistLeftWalk.png',
+            'idle_right':'CultistRightIdle.png','walk_right':'CultistRightWalk.png',
+            'idle_up':'CultistUpIdle.png','walk_up':'CultistUpRun.png'}
+          for dst,src in cu.items(): copy('cultist',src,f'cultist/{dst}.png')
+
+          copy('ui','SimplePanel01.png','ui/panel.png')
+          copy('ui','GenericButton.png','ui/button.png')
+          copy('ui','GenericButtonActive.png','ui/button_active.png')
+          copy('ui','GenericButtonPressed.png','ui/button_pressed.png')
+          copy('ui','BossHealthBar.png','ui/boss_health.png')
+          copy('ui','HUDHealthBar.png','ui/hud_health.png')
+          copy('ui','Inventory.png','ui/inventory.png')
+          copy('ui','Warrior Icon.png','ui/key_icon.png')
+          copy('ui','Warrior Skill Icon 01.png','ui/skill_icon.png')
+          for i in range(1,13):
+              copy('ui',f'Main Menu animated background {i}.png',f'ui/title/{i:02d}.png')
+
+          copy('equipment','Common Arming Sword.png','equipment/arming_sword.png')
+          copy('equipment','Common Bearded Axe.png','equipment/bearded_axe.png')
+          copy('equipment','Common Greatsword.png','equipment/greatsword.png')
+          copy('equipment','Common Ragged shirt.png','equipment/ragged_shirt.png')
+          copy('equipment','Common ChainMail Chestpiece.png','equipment/chainmail.png')
+          copy('equipment','Rare Plate Chestpiece.png','equipment/plate.png')
+
+          avg=ImageStat.Stat(mock.resize((1,1))).mean[:3]
+          base=(max(30,int(avg[0]*.58)),max(27,int(avg[1]*.58)),max(25,int(avg[2]*.58)),255)
+          specs=[
+              ('prison',(1200,800),(42,35,31)),
+              ('infirmary',(1200,800),(34,40,35)),
+              ('temple',(1200,800),(44,34,31)),
+              ('heart',(1600,800),(45,27,30))]
+          for name,size,tint in specs:
+              img=Image.new('RGBA',size,base)
+              dr=ImageDraw.Draw(img)
+              sw,sh=64,48
+              for y in range(0,size[1],sh):
+                  row=y//sh
+                  off=-32 if row%2 else 0
+                  for x in range(off,size[0],sw):
+                      v=random.randint(-10,10)
+                      fill=tuple(max(18,min(90,int(base[i])+v)) for i in range(3))+(255,)
+                      dr.rectangle((x+2,y+2,x+sw-3,y+sh-3),fill=fill,outline=(20,17,16,125),width=2)
+                      if random.random()<.14:
+                          cx=x+random.randint(12,52); cy=y+random.randint(10,38)
+                          dr.line((cx,cy,cx+random.randint(-18,18),cy+random.randint(-15,15)),fill=(22,18,18,120),width=2)
+              img=Image.alpha_composite(img,Image.new('RGBA',size,tint+(42,)))
+              dr=ImageDraw.Draw(img)
+              if name in ('prison','temple','heart'):
+                  for _ in range(6 if name!='heart' else 10):
+                      cx=random.randint(90,size[0]-90); cy=random.randint(90,size[1]-90); rr=random.randint(10,34)
+                      dr.ellipse((cx-rr,cy-rr//2,cx+rr,cy+rr//2),fill=(70,9,13,random.randint(22,48)))
+              img.save(OUT/'rooms'/f'{name}.png')
+
+          tiles=Image.open(OUT/'dungeon/tileset.png').convert('RGBA')
+          tile=tiles.crop((0,0,32,32)).resize((48,48),Image.Resampling.NEAREST)
+          gate=Image.new('RGBA',(48,112),(0,0,0,0)); gate.alpha_composite(tile,(0,32))
+          gd=ImageDraw.Draw(gate)
+          for x in (7,19,31,41): gd.rectangle((x,5,x+4,108),fill=(49,43,38,255))
+          for y in (12,50,92): gd.rectangle((3,y,45,y+4),fill=(78,66,54,255))
+          gate.save(OUT/'dungeon/gate.png')
+          PY
+
+      - name: Generate original ambient and SFX
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/ForsakenOverhaul/assets/audio
+          python3 - <<'PY'
+          import wave, math, random, struct
+          from pathlib import Path
+          random.seed(4242)
+          out=Path('/tmp/ForsakenOverhaul/assets/audio')
+          sr=22050
+          def save(name,samples):
+              with wave.open(str(out/name),'wb') as w:
+                  w.setnchannels(1);w.setsampwidth(2);w.setframerate(sr)
+                  data=bytearray()
+                  for x in samples:
+                      x=max(-1,min(1,x));data += struct.pack('<h',int(x*32767))
+                  w.writeframes(bytes(data))
+          dur=18;n=int(sr*dur);arr=[]
+          for i in range(n):
+              t=i/sr
+              s=.10*math.sin(2*math.pi*38*t)+.08*math.sin(2*math.pi*57*t+.7)+.025*(random.random()*2-1)
+              for cc in (4.1,9.3,14.7):
+                  dd=abs(t-cc)
+                  if dd<1.2:s+=.10*math.sin(2*math.pi*151*t)*math.exp(-dd*3)
+              arr.append(s)
+          save('ambient.wav',arr)
+          def fx(name,dur,freq,noise=.0,decay=8,vol=.55):
+              n=int(sr*dur);a=[]
+              for i in range(n):
+                  t=i/sr;e=math.exp(-decay*t)
+                  a.append((math.sin(2*math.pi*freq*t)+noise*(random.random()*2-1))*e*vol)
+              save(name,a)
+          fx('footstep.wav',.15,86,.35,22,.45)
+          fx('pickup.wav',.26,720,.03,7,.35)
+          fx('ui.wav',.14,520,.0,9,.28)
+          fx('hit.wav',.24,72,.48,11,.65)
+          fx('door.wav',.65,47,.34,3,.62)
+          fx('ritual.wav',1.20,117,.12,1.7,.48)
+          fx('battle_start.wav',.85,59,.22,2.2,.62)
+          PY
+
+      - name: Credits
+        run: |
+          cat > /tmp/ForsakenOverhaul/CREDITS.txt <<'EOF'
+          THE FORSAKEN DEPTHS — OVERHAUL
+          Lucifer pixel assets by Foozle/FoozleCC: Dungeon Tileset, Warrior, Cultist, Skeleton Grunt, RPG UI, Equipment.
+          Source: https://foozlecc.itch.io/
+          License: CC0 as stated by the original asset pages.
+          Horror creature SVG art, story, game systems, map/collision layout, audio synthesis and integration are original to this project.
+          EOF
+
+      - name: Download Godot 4.7.2
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' | head -1)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Validate project in Godot
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenOverhaul --quit-after 5 2>&1 | tee /tmp/editor.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/editor.log; then exit 1; fi
+          "$GODOT_BIN" --headless --path /tmp/ForsakenOverhaul --quit-after 5 2>&1 | tee /tmp/game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/game.log; then exit 1; fi
+
+      - name: Install Windows export templates
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz -o /tmp/templates.tpz
+          rm -rf /tmp/templates
+          mkdir -p /tmp/templates
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Export standalone Windows game
+        run: |
+          set -euxo pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenOverhaul --export-release "Windows Desktop" /tmp/windows/TheForsakenDepths.exe
+          test -s /tmp/windows/TheForsakenDepths.exe
+          cat > /tmp/windows/README_TH.txt <<'EOF'
+          THE FORSAKEN DEPTHS
+          เปิด TheForsakenDepths.exe เพื่อเล่นเป็นหน้าต่างเกมจริง ไม่ใช่ Embedded Game ใน Godot Editor
+          F11 = สลับ Fullscreen / Windowed
+          WASD เดิน | Shift วิ่ง | E สำรวจ/คุย | I Inventory | Q Journal | T Torch
+          EOF
+
+      - name: Package project and Windows build
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenOverhaul/.godot
+          cd /tmp
+          zip -qr /tmp/release/TheForsakenDepths_OVERHAUL_PROJECT.zip ForsakenOverhaul
+          cd /tmp/windows
+          zip -qr /tmp/release/TheForsakenDepths_WINDOWS.zip .
+          test -s /tmp/release/TheForsakenDepths_OVERHAUL_PROJECT.zip
+          test -s /tmp/release/TheForsakenDepths_WINDOWS.zip
+          ls -lh /tmp/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_OVERHAUL
+          path: /tmp/release/*
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish permanent download branch
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          cd /tmp
+          rm -rf publish-repo
+          git clone "https://x-access-token:$GITHUB_TOKEN@github.com/Worawit0/space-dodge-game01.git" publish-repo
+          cd publish-repo
+          git checkout --orphan forsaken-overhaul-release
+          git rm -rf . || true
+          cp /tmp/release/*.zip .
+          cat > README.md <<'EOF'
+          # The Forsaken Depths — Overhaul
+          - TheForsakenDepths_WINDOWS.zip: recommended standalone Windows build.
+          - TheForsakenDepths_OVERHAUL_PROJECT.zip: Godot source project.
+          EOF
+          git add .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish Forsaken Depths Overhaul"
+          git push --force origin forsaken-overhaul-release
