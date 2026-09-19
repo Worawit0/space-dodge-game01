@@ -112,6 +112,23 @@ var ending_overlay: ColorRect
 var ending_title: Label
 var ending_text: RichTextLabel
 
+var objective_panel: Panel
+var objective_label: RichTextLabel
+var journal_overlay: ColorRect
+var journal_text: RichTextLabel
+var story_overlay: ColorRect
+var story_title: Label
+var story_text: RichTextLabel
+var story_continue: Button
+var last_location := "OLD PRISON"
+var story_seen := {
+	"intro": false,
+	"infirmary": false,
+	"temple": false,
+	"heart": false,
+	"boss": false
+}
+
 var radial_light_texture: GradientTexture2D
 var lucifer_panel: Texture2D
 var lucifer_button: Texture2D
@@ -145,11 +162,16 @@ func _process(delta):
 func _unhandled_key_input(event):
 	if not event.pressed or event.echo:
 		return
+	if event.keycode == KEY_F11:
+		_toggle_fullscreen()
+		return
 	if game_mode == "explore":
 		if event.keycode == KEY_E:
 			_interact()
 		elif event.keycode == KEY_I:
 			_open_inventory()
+		elif event.keycode == KEY_Q:
+			_open_journal()
 		elif event.keycode == KEY_T:
 			torch_on = not torch_on
 			_show_message("Torch " + ("lit." if torch_on else "extinguished."))
@@ -160,6 +182,8 @@ func _unhandled_key_input(event):
 			_close_inventory()
 		elif game_mode == "dialogue":
 			_close_dialogue()
+		elif game_mode == "journal":
+			_close_journal()
 
 func _load_lucifer_ui():
 	lucifer_panel = _load_tex("res://assets/lucifer/ui/panel.png")
@@ -285,12 +309,14 @@ func _add_strip_animation(frames:SpriteFrames,name:String,path:String,frame_widt
 func _build_world_content():
 	_make_pickup("rust_key",Vector2(-260,-220),"Rust Key","key","A corroded key. Its teeth are dark with old blood.","")
 	_make_pickup("prison_ration",Vector2(210,220),"Ration","item","Dry food. Barely edible.","")
+	_make_pickup("coin_prison",Vector2(350,245),"Old Coin","coin","A worn coin stamped with a bell.","")
 	_make_enemy("ghoul_prison",Vector2(260,-80),"Starved Gaoler","skeleton",62,13,false)
 	_make_gate("prison_gate",Vector2(600,0),"Rust Key","prison_gate_open")
 
 	_make_npc("maren",Vector2(870,-110),"Maren","maren",Color(0.72,0.83,0.92))
 	_make_pickup("blue_vial_1",Vector2(1310,190),"Blue Vial","item","A cold restorative.","")
 	_make_pickup("bandage_1",Vector2(1460,-210),"Bandage","item","Clean enough to stop bleeding.","")
+	_make_pickup("coin_infirmary",Vector2(1530,250),"Old Coin","coin","A worn coin stamped with a bell.","")
 	_make_pickup("axe_1",Vector2(1160,245),"Bearded Axe","weapon","A heavy common axe.","res://assets/lucifer/equipment/bearded_axe.png")
 	_make_enemy("ghoul_infirmary",Vector2(1580,80),"Mutilated Patient","skeleton",72,15,false)
 	_make_shrine("deep_shrine",Vector2(1110,0))
@@ -299,6 +325,8 @@ func _build_world_content():
 	_make_enemy("cultist_temple",Vector2(2550,130),"Bell Cultist","cultist",88,18,false)
 	_make_ritual("ritual_circle",Vector2(2360,-30))
 	_make_pickup("book_echoes",Vector2(2790,-215),"Book of Echoes","book","A damp ritual manuscript.","")
+	_make_pickup("coin_temple",Vector2(2230,245),"Old Coin","coin","A worn coin stamped with a bell.","")
+	_make_pickup("coin_temple_2",Vector2(2860,-250),"Old Coin","coin","A second ritual coin. Three are enough for the circle.","")
 	_make_pickup("chainmail_1",Vector2(2150,235),"Chainmail Chestpiece","armor","Old chainmail with several repaired rings.","res://assets/lucifer/equipment/chainmail.png")
 	_make_pickup("greatsword_1",Vector2(2750,215),"Greatsword","weapon","A broad blade meant for two hands.","res://assets/lucifer/equipment/greatsword.png")
 	_make_gate("temple_gate",Vector2(1800,0),"The temple is sealed from this side.","temple_gate_open")
@@ -560,7 +588,34 @@ func _update_traps(delta):
 
 func _update_location():
 	var x = player.position.x
-	current_location = "OLD PRISON" if x<600 else ("ABANDONED INFIRMARY" if x<1800 else ("TEMPLE DISTRICT" if x<3000 else "HEART OF THE BELL"))
+	var next_location = "OLD PRISON" if x < 600 else ("ABANDONED INFIRMARY" if x < 1800 else ("TEMPLE DISTRICT" if x < 3000 else "HEART OF THE BELL"))
+	if next_location != current_location:
+		last_location = current_location
+		current_location = next_location
+		_on_location_changed(next_location)
+
+func _on_location_changed(location:String):
+	if location == "ABANDONED INFIRMARY" and not bool(story_seen["infirmary"]):
+		story_seen["infirmary"] = true
+		_show_story_card(
+			"CHAPTER II — THE ABANDONED INFIRMARY",
+			"Beyond the prison gate is an infirmary that should have been abandoned years ago. Fresh blood marks the floor. A wounded scavenger named Maren is still alive, and the old Deep Shrine here can preserve a memory — but only with a Wax Seal.",
+			"Speak to Maren, find the Deep Shrine, then continue east toward the Temple District."
+		)
+	elif location == "TEMPLE DISTRICT" and not bool(story_seen["temple"]):
+		story_seen["temple"] = true
+		_show_story_card(
+			"CHAPTER III — THE TEMPLE DISTRICT",
+			"The temple was built around a ritual older than the city. Priest Sever claims the Bell Warden is not a god but a lock. The red circle can forge a Bell Sigil from three old coins — or from blood.",
+			"Speak to Sever. Inspect the ritual circle and obtain the Bell Sigil."
+		)
+	elif location == "HEART OF THE BELL" and not bool(story_seen["heart"]):
+		story_seen["heart"] = true
+		_show_story_card(
+			"CHAPTER IV — HEART OF THE BELL",
+			"The sound is no longer coming through the walls. It is inside your teeth. At the center of the buried city waits the Bell Warden, guarding the thing that has been calling the missing people for years.",
+			"Defeat the Bell Warden, then approach the Heart Altar."
+		)
 
 func _nearest_interactable() -> Dictionary:
 	var best := {}
@@ -616,6 +671,8 @@ func _take_pickup(e:Dictionary):
 		if not weapons.has(label): weapons.append(label)
 	elif kind=="armor":
 		if not armor.has(label): armor.append(label)
+	elif kind=="coin":
+		coins += 1
 	_show_message("Obtained: "+label+"\n"+String(e["desc"]))
 	_deactivate_entry(e,true)
 
@@ -705,8 +762,10 @@ func _ritual_blood():
 		flags["blood_rite"]=true
 		body=max(1.0,body-22)
 		bleeding=true
-		if not books.has("Rite of the Hollow Palm"):books.append("Rite of the Hollow Palm")
-	_show_message("The circle accepts the offering. [BLEEDING]")
+		flags["bell_sigil"]=true
+		if not key_items.has("Bell Sigil"): key_items.append("Bell Sigil")
+		if not books.has("Rite of the Hollow Palm"): books.append("Rite of the Hollow Palm")
+	_show_message("Your blood hardens into black metal. Obtained: Bell Sigil. [BLEEDING]")
 	_close_dialogue()
 
 func _open_shrine():
@@ -839,13 +898,23 @@ func _battle_enemy_dead()->bool:
 	return int(battle_enemy["body"])<=0 or int(battle_enemy["parts"]["Head"])<=0
 
 func _battle_win():
-	if bool(battle_enemy["boss"]):
-		flags["boss_dead"]=true;coins+=5
+	var was_boss = bool(battle_enemy["boss"])
+	if was_boss:
+		flags["boss_dead"]=true
+		coins+=5
 	else:
 		coins+=1
-	if world_nodes.has(battle_source_id):_deactivate_entry(world_nodes[battle_source_id],true)
+	if world_nodes.has(battle_source_id): _deactivate_entry(world_nodes[battle_source_id],true)
 	_end_battle(true)
-	_show_message("Victory. The silence returns.")
+	if was_boss and not bool(story_seen["boss"]):
+		story_seen["boss"] = true
+		_show_story_card(
+			"THE BELL FALLS SILENT",
+			"The Warden collapses, but the bell does not die. Its final vibration travels downward into the Heart Altar. Whatever is buried beneath the city is waiting for your answer.",
+			"Approach the Heart Altar and decide what becomes of the buried city."
+		)
+	else:
+		_show_message("Victory. The silence returns.")
 
 func _end_battle(_victory:bool):
 	battle_overlay.visible=false
@@ -973,7 +1042,7 @@ func _item_icon_path(name:String)->String:
 func _save_game():
 	if int(inventory.get("Wax Seal",0))<=0:_show_message("You have no Wax Seal.");return
 	inventory["Wax Seal"]-=1
-	var data={"body":body,"mind":mind,"hunger":hunger,"torch":torch,"bleeding":bleeding,"infected":infected,"fractured":fractured,"coins":coins,"inventory":inventory,"weapons":weapons,"armor":armor,"books":books,"key_items":key_items,"equipped_weapon":equipped_weapon,"equipped_armor":equipped_armor,"flags":flags,"party":party,"removed_ids":removed_ids,"player_pos":[player.position.x,player.position.y]}
+	var data={"body":body,"mind":mind,"hunger":hunger,"torch":torch,"bleeding":bleeding,"infected":infected,"fractured":fractured,"coins":coins,"inventory":inventory,"weapons":weapons,"armor":armor,"books":books,"key_items":key_items,"equipped_weapon":equipped_weapon,"equipped_armor":equipped_armor,"flags":flags,"party":party,"removed_ids":removed_ids,"story_seen":story_seen,"player_pos":[player.position.x,player.position.y]}
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	f.store_string(JSON.stringify(data))
 	_show_message("Your memory is sealed in wax.")
@@ -987,7 +1056,7 @@ func _load_game():
 	body=float(data.get("body",100));mind=float(data.get("mind",100));hunger=float(data.get("hunger",100));torch=float(data.get("torch",100))
 	bleeding=bool(data.get("bleeding",false));infected=bool(data.get("infected",false));fractured=bool(data.get("fractured",false));coins=int(data.get("coins",0))
 	inventory=data.get("inventory",inventory);weapons=data.get("weapons",weapons);armor=data.get("armor",armor);books=data.get("books",books);key_items=data.get("key_items",key_items)
-	equipped_weapon=String(data.get("equipped_weapon","Rusted Sword"));equipped_armor=String(data.get("equipped_armor","Ragged Shirt"));flags=data.get("flags",flags);party=data.get("party",party)
+	equipped_weapon=String(data.get("equipped_weapon","Rusted Sword"));equipped_armor=String(data.get("equipped_armor","Ragged Shirt"));flags=data.get("flags",flags);party=data.get("party",party);story_seen=data.get("story_seen",story_seen)
 	removed_ids.clear()
 	for rid in data.get("removed_ids",[]):
 		var id=String(rid);removed_ids.append(id)
@@ -1055,10 +1124,13 @@ func _build_ui():
 	hud_stats=Label.new();hud_stats.position=Vector2(20,48);hud_stats.add_theme_font_size_override("font_size",16);hud_panel.add_child(hud_stats)
 	hud_status=Label.new();hud_status.position=Vector2(20,80);hud_status.add_theme_font_size_override("font_size",14);hud_panel.add_child(hud_status)
 
+	objective_panel=_make_panel(Vector2(820,14),Vector2(445,132));root.add_child(objective_panel)
+	objective_label=RichTextLabel.new();objective_label.bbcode_enabled=true;objective_label.position=Vector2(18,12);objective_label.size=Vector2(410,105);objective_label.add_theme_font_size_override("normal_font_size",15);objective_panel.add_child(objective_label)
+
 	prompt_label=Label.new();prompt_label.position=Vector2(455,646);prompt_label.size=Vector2(370,44);prompt_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;prompt_label.add_theme_font_size_override("font_size",20);root.add_child(prompt_label)
 	message_label=Label.new();message_label.position=Vector2(350,30);message_label.size=Vector2(580,90);message_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;message_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;message_label.add_theme_font_size_override("font_size",18);root.add_child(message_label)
 
-	_build_title_ui(root);_build_dialogue_ui(root);_build_inventory_ui(root);_build_battle_ui(root);_build_ending_ui(root)
+	_build_title_ui(root);_build_dialogue_ui(root);_build_inventory_ui(root);_build_battle_ui(root);_build_journal_ui(root);_build_story_ui(root);_build_ending_ui(root)
 
 func _build_title_ui(root:Control):
 	title_overlay=ColorRect.new();title_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);title_overlay.color=Color(0.005,0.004,0.005,1);root.add_child(title_overlay)
@@ -1080,7 +1152,16 @@ func _update_title_animation(delta):
 
 func _new_game():
 	body=100;mind=100;hunger=100;torch=100;bleeding=false;infected=false;fractured=false;torch_on=true;coins=0
-	player.position=Vector2(-470,40);title_overlay.visible=false;game_mode="explore";_show_message("You wake beneath the Old Prison. The bell above has not rung in years.")
+	story_seen={"intro":true,"infirmary":false,"temple":false,"heart":false,"boss":false}
+	player.position=Vector2(-470,40)
+	current_location="OLD PRISON"
+	last_location="OLD PRISON"
+	title_overlay.visible=false
+	_show_story_card(
+		"PROLOGUE — THE LETTER",
+		"Seven years ago, the Bell beneath the city rang once. Hundreds vanished before dawn, including your younger brother. Three nights ago a letter arrived in his handwriting:\n\n\"If the Bell rings again, do not let me answer it.\"\n\nThe trail ends beneath the condemned Old Prison. You descend with one torch, a rusted sword, and no way back.",
+		"Search the western prison cells for the Rust Key, then open the iron gate to the east."
+	)
 
 func _build_dialogue_ui(root:Control):
 	dialogue_panel=_make_panel(Vector2(105,430),Vector2(1070,250));root.add_child(dialogue_panel);dialogue_panel.visible=false
@@ -1115,11 +1196,113 @@ func _build_battle_ui(root:Control):
 	battle_log=RichTextLabel.new();battle_log.bbcode_enabled=true;battle_log.position=Vector2(250,18);battle_log.size=Vector2(500,195);battle_log.add_theme_font_size_override("normal_font_size",17);bottom.add_child(battle_log)
 	battle_party_stats=RichTextLabel.new();battle_party_stats.bbcode_enabled=true;battle_party_stats.position=Vector2(775,18);battle_party_stats.size=Vector2(320,195);battle_party_stats.add_theme_font_size_override("normal_font_size",17);bottom.add_child(battle_party_stats)
 
+func _build_journal_ui(root:Control):
+	journal_overlay=ColorRect.new()
+	journal_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	journal_overlay.color=Color(0.004,0.003,0.004,0.985)
+	root.add_child(journal_overlay)
+	journal_overlay.visible=false
+	var frame=_make_panel(Vector2(145,70),Vector2(990,580))
+	journal_overlay.add_child(frame)
+	var title=Label.new()
+	title.text="JOURNAL / OBJECTIVE"
+	title.position=Vector2(35,25)
+	title.size=Vector2(920,45)
+	title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size",28)
+	frame.add_child(title)
+	journal_text=RichTextLabel.new()
+	journal_text.bbcode_enabled=true
+	journal_text.position=Vector2(55,90)
+	journal_text.size=Vector2(880,390)
+	journal_text.add_theme_font_size_override("normal_font_size",19)
+	frame.add_child(journal_text)
+	var close=_button("BACK TO GAME  [Q / Esc]")
+	close.position=Vector2(330,500)
+	close.size=Vector2(330,50)
+	close.pressed.connect(_close_journal)
+	frame.add_child(close)
+
+func _build_story_ui(root:Control):
+	story_overlay=ColorRect.new()
+	story_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	story_overlay.color=Color(0.002,0.002,0.003,0.97)
+	root.add_child(story_overlay)
+	story_overlay.visible=false
+	var frame=_make_panel(Vector2(145,85),Vector2(990,550))
+	story_overlay.add_child(frame)
+	story_title=Label.new()
+	story_title.position=Vector2(45,35)
+	story_title.size=Vector2(900,60)
+	story_title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	story_title.add_theme_font_size_override("font_size",31)
+	frame.add_child(story_title)
+	story_text=RichTextLabel.new()
+	story_text.bbcode_enabled=true
+	story_text.position=Vector2(80,120)
+	story_text.size=Vector2(830,300)
+	story_text.add_theme_font_size_override("normal_font_size",20)
+	frame.add_child(story_text)
+	story_continue=_button("CONTINUE")
+	story_continue.position=Vector2(345,455)
+	story_continue.size=Vector2(300,55)
+	story_continue.pressed.connect(_close_story_card)
+	frame.add_child(story_continue)
+
 func _build_ending_ui(root:Control):
 	ending_overlay=ColorRect.new();ending_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);ending_overlay.color=Color(0.002,0.002,0.003,0.985);root.add_child(ending_overlay);ending_overlay.visible=false
 	ending_title=Label.new();ending_title.position=Vector2(180,100);ending_title.size=Vector2(920,70);ending_title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;ending_title.add_theme_font_size_override("font_size",38);ending_overlay.add_child(ending_title)
 	ending_text=RichTextLabel.new();ending_text.position=Vector2(250,205);ending_text.size=Vector2(780,300);ending_text.add_theme_font_size_override("normal_font_size",23);ending_overlay.add_child(ending_text)
 	var lb=_button("LOAD LAST MEMORY");lb.position=Vector2(440,555);lb.size=Vector2(400,55);lb.pressed.connect(func():ending_overlay.visible=false;_load_game());ending_overlay.add_child(lb)
+
+func _show_story_card(title_text:String,body_text:String,objective_text:String):
+	game_mode="story"
+	story_overlay.visible=true
+	story_title.text=title_text
+	story_text.text=body_text+"\n\n[color=#d2b67c][b]OBJECTIVE[/b][/color]\n"+objective_text+"\n\n[color=#8f887f]WASD move • E interact • I inventory • Q journal • T torch • F11 fullscreen[/color]"
+
+func _close_story_card():
+	story_overlay.visible=false
+	game_mode="explore"
+
+func _open_journal():
+	game_mode="journal"
+	journal_overlay.visible=true
+	journal_text.text=_journal_text()
+
+func _close_journal():
+	journal_overlay.visible=false
+	game_mode="explore"
+
+func _journal_text()->String:
+	var recap="[b]STORY[/b]\nSeven years ago the Bell rang once and hundreds vanished, including your younger brother. A new letter in his handwriting led you beneath the Old Prison. Maren believes the ritual circle can create the Bell Sigil. Priest Sever claims the Bell Warden is a lock guarding something deeper.\n\n"
+	recap+="[color=#d2b67c][b]CURRENT OBJECTIVE[/b][/color]\n"+_current_objective()+"\n\n"
+	recap+="[b]SURVIVAL[/b]\nBODY = health • MIND = sanity • HUNGER falls over time • TORCH keeps the dark away.\nBleeding drains BODY. Bandage stops it. Wax Seal is required to save at a Deep Shrine.\n\n"
+	recap+="[b]CONTROLS[/b]\nWASD Move • Shift Run • E Interact • I Inventory • Q Journal • T Torch • F9 Load • F11 Fullscreen"
+	return recap
+
+func _current_objective()->String:
+	if bool(flags["boss_dead"]):
+		return "The Warden is dead. Go east to the Heart Altar and decide the fate of the buried city."
+	if not bool(flags["prison_gate_open"]):
+		if not bool(flags["rust_key"]):
+			return "OLD PRISON — Search the western cells for the Rust Key. The locked iron gate is to the east."
+		return "OLD PRISON — You have the Rust Key. Return to the iron gate on the eastern side and open it."
+	if not bool(flags["temple_gate_open"]):
+		return "INFIRMARY — Speak to Maren and locate the Deep Shrine. Then continue east and open the Temple gate."
+	if not bool(flags["bell_sigil"]):
+		return "TEMPLE — Speak to Priest Sever. Use the red ritual circle. Offer 3 Old Coins ("+str(coins)+"/3) or blood to forge the Bell Sigil."
+	if not bool(flags["heart_gate_open"]):
+		return "TEMPLE — You have the Bell Sigil. Use it on the eastern gate leading to the Heart of the Bell."
+	return "HEART OF THE BELL — Find and defeat the Bell Warden. Then approach the Heart Altar."
+
+func _toggle_fullscreen():
+	var w=get_window()
+	if w.mode==Window.MODE_FULLSCREEN or w.mode==Window.MODE_EXCLUSIVE_FULLSCREEN:
+		w.mode=Window.MODE_WINDOWED
+		w.size=Vector2i(1280,720)
+	else:
+		w.mode=Window.MODE_FULLSCREEN
 
 func _make_panel(pos:Vector2,size:Vector2)->Panel:
 	var p=Panel.new();p.position=pos;p.size=size
@@ -1147,5 +1330,7 @@ func _update_hud():
 	if fractured:status.append("FRACTURE")
 	if bool(party["Maren"]["joined"]):status.append("PARTY: MAREN")
 	hud_status.text=(" | ".join(status) if status.size()>0 else "Stable")+"   COINS: "+str(coins)
+	if objective_label:
+		objective_label.text="[color=#d2b67c][b]OBJECTIVE[/b][/color]\n"+_current_objective()+"\n\n[color=#8f887f]Q: Journal   F11: Fullscreen[/color]"
 	if inventory_overlay and inventory_overlay.visible:
 		inventory_status.text="[b]STATUS[/b]\nBODY "+str(int(body))+"/"+str(int(max_body))+"\nMIND "+str(int(mind))+"\nHUNGER "+str(int(hunger))+"\nTORCH "+str(int(torch))+"\n\nWeapon: "+equipped_weapon+"\nArmor: "+equipped_armor+"\nCoins: "+str(coins)
