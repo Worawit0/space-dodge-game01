@@ -1,0 +1,66 @@
+name: Build Forsaken Depths Complete
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-build-20260919
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-build-20260919
+
+      - name: Download Kenney Mini Dungeon CC0
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3             "https://kenney.nl/media/pages/assets/mini-dungeon/6cd72dc849-1785314274/kenney_mini-dungeon.zip"             -o /tmp/kenney_mini-dungeon.zip
+          mkdir -p /tmp/kenney
+          unzip -q /tmp/kenney_mini-dungeon.zip -d /tmp/kenney
+          find /tmp/kenney -maxdepth 5 -type f | head -100
+
+      - name: Assemble Godot project with real GLB assets
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/TheForsakenDepths
+          cp -a forsaken_source /tmp/TheForsakenDepths
+          mkdir -p /tmp/TheForsakenDepths/assets/kenney
+          find /tmp/kenney -type f -iname "*.glb" -exec cp {} /tmp/TheForsakenDepths/assets/kenney/ \;
+          find /tmp/kenney -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -exec cp {} /tmp/TheForsakenDepths/assets/kenney/ \; || true
+          echo "Copied GLB assets:"
+          find /tmp/TheForsakenDepths/assets/kenney -maxdepth 1 -type f -iname "*.glb" -printf "%f\n" | sort
+          for f in floor.glb wall.glb gate.glb trap.glb character-human.glb character-orc.glb column.glb barrel.glb coin.glb; do
+            test -f "/tmp/TheForsakenDepths/assets/kenney/$f" || { echo "Missing required asset: $f"; exit 1; }
+          done
+
+      - name: Add build manifest
+        run: |
+          {
+            echo "THE FORSAKEN DEPTHS - COMPLETE BUILD"
+            echo "Built from branch: chatgpt-forsaken-build-20260919"
+            echo "Kenney Mini Dungeon CC0 assets bundled."
+            echo
+            echo "GLB files:"
+            find /tmp/TheForsakenDepths/assets/kenney -maxdepth 1 -type f -iname "*.glb" -printf "%f\n" | sort
+          } > /tmp/TheForsakenDepths/BUILD_MANIFEST.txt
+
+      - name: Package ZIP
+        run: |
+          cd /tmp
+          zip -qr TheForsakenDepths_Godot_COMPLETE.zip TheForsakenDepths
+          unzip -l TheForsakenDepths_Godot_COMPLETE.zip | tail -30
+          test -s TheForsakenDepths_Godot_COMPLETE.zip
+
+      - name: Upload complete project
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_Godot_COMPLETE
+          path: /tmp/TheForsakenDepths_Godot_COMPLETE.zip
+          if-no-files-found: error
+          compression-level: 0
