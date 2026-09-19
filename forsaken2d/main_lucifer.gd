@@ -1,6 +1,6 @@
 extends Node2D
 
-const SAVE_PATH := "user://forsaken_depths_lucifer_save.json"
+const SAVE_PATH := "user://forsaken_depths_polish_v2_save.json"
 const WORLD_TOP := -400.0
 const WORLD_BOTTOM := 400.0
 const WORLD_LEFT := -600.0
@@ -130,6 +130,11 @@ var story_seen := {
 }
 
 var radial_light_texture: GradientTexture2D
+var ambient_player: AudioStreamPlayer
+var sfx_player: AudioStreamPlayer
+var battle_music_player: AudioStreamPlayer
+var footstep_timer := 0.0
+var enemy_battle_lock := false
 var lucifer_panel: Texture2D
 var lucifer_button: Texture2D
 var lucifer_button_active: Texture2D
@@ -137,12 +142,16 @@ var lucifer_button_pressed: Texture2D
 
 func _ready():
 	randomize()
+	get_window().content_scale_size = Vector2i(1280,720)
+	get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
 	radial_light_texture = _make_radial_texture()
 	_load_lucifer_ui()
 	_build_world_visuals()
 	_build_player()
 	_build_world_content()
 	_build_ui()
+	_build_audio()
 	_apply_darkness()
 
 func _process(delta):
@@ -153,6 +162,7 @@ func _process(delta):
 		_update_survival(delta)
 		_update_player(delta)
 		_update_follower(delta)
+		_update_enemies(delta)
 		_update_interaction_prompt()
 		_update_traps(delta)
 		_update_location()
@@ -225,6 +235,42 @@ func _build_world_visuals():
 	for gx in [600.0,1800.0,3000.0]:
 		_make_static_rect(Vector2(gx,(WORLD_TOP-120)/2.0), Vector2(24,280))
 		_make_static_rect(Vector2(gx,(WORLD_BOTTOM+120)/2.0), Vector2(24,280))
+	_build_collision_layout()
+
+func _build_collision_layout():
+	# Solid wall blocks are drawn and collided together so the visual dungeon and physics agree.
+	var blocks = [
+		[Vector2(-450,-260),Vector2(210,180)],[Vector2(-430,270),Vector2(250,170)],[Vector2(120,-285),Vector2(270,120)],[Vector2(360,250),Vector2(250,150)],
+		[Vector2(760,-275),Vector2(210,140)],[Vector2(900,275),Vector2(300,140)],[Vector2(1430,-270),Vector2(260,150)],[Vector2(1610,260),Vector2(240,150)],
+		[Vector2(1960,-270),Vector2(220,150)],[Vector2(2140,270),Vector2(260,140)],[Vector2(2680,-270),Vector2(280,140)],[Vector2(2850,260),Vector2(220,150)],
+		[Vector2(3180,-270),Vector2(230,150)],[Vector2(3320,270),Vector2(270,150)],[Vector2(4100,-270),Vector2(270,150)],[Vector2(4330,260),Vector2(260,150)]
+	]
+	for spec in blocks:
+		_make_wall_block(spec[0],spec[1])
+
+func _make_wall_block(center:Vector2,size:Vector2):
+	var holder=Node2D.new()
+	holder.position=center
+	holder.z_index=1
+	add_child(holder)
+	var poly=Polygon2D.new()
+	poly.polygon=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2)])
+	poly.color=Color(0.075,0.060,0.055,0.96)
+	holder.add_child(poly)
+	var top=Line2D.new()
+	top.points=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2),Vector2(-size.x/2,-size.y/2)])
+	top.width=5.0
+	top.default_color=Color(0.20,0.16,0.13,1.0)
+	holder.add_child(top)
+	var body_node=StaticBody2D.new()
+	body_node.collision_layer=1
+	body_node.collision_mask=1
+	var cs=CollisionShape2D.new()
+	var rect=RectangleShape2D.new()
+	rect.size=size
+	cs.shape=rect
+	body_node.add_child(cs)
+	holder.add_child(body_node)
 
 func _build_player():
 	player = CharacterBody2D.new()
@@ -394,10 +440,17 @@ func _make_pickup(id:String,pos:Vector2,label:String,kind:String,desc:String,ico
 	_register_entry({"id":id,"node":holder,"type":"pickup","label":label,"kind":kind,"desc":desc,"active":true})
 
 func _make_enemy(id:String,pos:Vector2,label:String,art:String,enemy_body:int,damage:int,boss_enemy:bool):
-	var holder = Node2D.new()
+	var holder = CharacterBody2D.new()
 	holder.position = pos
 	holder.name = id
+	holder.collision_layer = 2
+	holder.collision_mask = 1
 	add_child(holder)
+	var cs=CollisionShape2D.new()
+	var shape=CircleShape2D.new()
+	shape.radius=20.0 if not boss_enemy else 28.0
+	cs.shape=shape
+	holder.add_child(cs)
 	var s = AnimatedSprite2D.new()
 	s.sprite_frames = _build_enemy_frames("cultist" if art=="cultist" or art=="boss" else "skeleton")
 	s.scale = Vector2(2.0,2.0) if not boss_enemy else Vector2(2.8,2.8)
@@ -413,7 +466,13 @@ func _make_enemy(id:String,pos:Vector2,label:String,art:String,enemy_body:int,da
 		red.energy = 1.1
 		red.color = Color(0.75,0.08,0.08)
 		holder.add_child(red)
-	_register_entry({"id":id,"node":holder,"type":"enemy","label":label,"art":art,"body":enemy_body,"damage":damage,"boss":boss_enemy,"active":true})
+	var left = -560.0 if pos.x < 600 else (640.0 if pos.x < 1800 else (1840.0 if pos.x < 3000 else 3040.0))
+	var right = 560.0 if pos.x < 600 else (1760.0 if pos.x < 1800 else (2960.0 if pos.x < 3000 else 4560.0))
+	_register_entry({
+		"id":id,"node":holder,"type":"enemy","label":label,"art":art,"body":enemy_body,"damage":damage,"boss":boss_enemy,"active":true,
+		"sprite":s,"home":pos,"wander_dir":Vector2.ZERO,"wander_time":0.0,"room_left":left,"room_right":right,
+		"speed":92.0 if boss_enemy else 68.0,"detect":260.0 if boss_enemy else 190.0
+	})
 
 func _make_npc(id:String,pos:Vector2,label:String,kind:String,tint:Color):
 	var holder = Node2D.new()
@@ -507,7 +566,7 @@ func _make_radial_texture() -> GradientTexture2D:
 	tex.fill_to = Vector2(1.0,0.5)
 	return tex
 
-func _update_player(_delta):
+func _update_player(delta):
 	var dir = Vector2.ZERO
 	if Input.is_key_pressed(KEY_W): dir.y -= 1
 	if Input.is_key_pressed(KEY_S): dir.y += 1
@@ -521,6 +580,14 @@ func _update_player(_delta):
 		speed *= 0.58
 	player.velocity = dir * speed
 	player.move_and_slide()
+
+	if dir.length() > 0.0:
+		footstep_timer -= delta
+		if footstep_timer <= 0.0:
+			footstep_timer = 0.34 if speed < 250.0 else 0.24
+			_play_sfx("footstep")
+	else:
+		footstep_timer = 0.0
 
 	if dir.length() > 0.0:
 		if abs(dir.x) > abs(dir.y):
@@ -547,6 +614,50 @@ func _update_follower(delta):
 	var anim = ("walk_"+facing) if d > 8 else ("idle_"+facing)
 	if maren_follower.animation != anim:
 		maren_follower.play(anim)
+
+func _update_enemies(delta):
+	if enemy_battle_lock:
+		return
+	for entry in interactables:
+		if String(entry.get("type",""))!="enemy" or not bool(entry.get("active",false)):
+			continue
+		var body_node=entry["node"] as CharacterBody2D
+		var sprite=entry["sprite"] as AnimatedSprite2D
+		if not is_instance_valid(body_node):
+			continue
+		var dist=body_node.position.distance_to(player.position)
+		var velocity=Vector2.ZERO
+		if dist<float(entry["detect"]):
+			velocity=body_node.position.direction_to(player.position)*float(entry["speed"])
+		else:
+			entry["wander_time"]=float(entry["wander_time"])-delta
+			if float(entry["wander_time"])<=0.0:
+				entry["wander_time"]=randf_range(1.0,2.8)
+				var dirs=[Vector2.LEFT,Vector2.RIGHT,Vector2.UP,Vector2.DOWN,Vector2.ZERO]
+				entry["wander_dir"]=dirs[randi()%dirs.size()]
+			velocity=Vector2(entry["wander_dir"])*float(entry["speed"])*0.34
+		if body_node.position.x < float(entry["room_left"])+35.0 and velocity.x<0: velocity.x=0
+		if body_node.position.x > float(entry["room_right"])-35.0 and velocity.x>0: velocity.x=0
+		if body_node.position.y < WORLD_TOP+42.0 and velocity.y<0: velocity.y=0
+		if body_node.position.y > WORLD_BOTTOM-42.0 and velocity.y>0: velocity.y=0
+		body_node.velocity=velocity
+		body_node.move_and_slide()
+		_play_enemy_anim(sprite,velocity)
+		if body_node.position.distance_to(player.position)<34.0:
+			enemy_battle_lock=true
+			body_node.velocity=Vector2.ZERO
+			_start_battle(entry)
+			break
+
+func _play_enemy_anim(sprite:AnimatedSprite2D,vel:Vector2):
+	var dir="down"
+	if abs(vel.x)>abs(vel.y):
+		dir="right" if vel.x>0 else "left"
+	elif abs(vel.y)>0.1:
+		dir="down" if vel.y>0 else "up"
+	var name=("walk_" if vel.length()>5.0 else "idle_")+dir
+	if sprite.animation!=name:
+		sprite.play(name)
 
 func _update_survival(delta):
 	hunger = max(0.0,hunger-delta*0.18)
@@ -673,6 +784,7 @@ func _take_pickup(e:Dictionary):
 		if not armor.has(label): armor.append(label)
 	elif kind=="coin":
 		coins += 1
+	_play_sfx("pickup")
 	_show_message("Obtained: "+label+"\n"+String(e["desc"]))
 	_deactivate_entry(e,true)
 
@@ -681,17 +793,20 @@ func _open_gate(e:Dictionary):
 	if id=="prison_gate":
 		if flags["rust_key"]:
 			flags["prison_gate_open"]=true
+			_play_sfx("door")
 			_show_message("The rusted key turns.")
 			_deactivate_entry(e,true)
 		else:
 			_show_dialogue("The iron gate is locked.\n\nA small keyhole is buried beneath rust.",[{"text":"Leave","call":func():_close_dialogue()}])
 	elif id=="temple_gate":
 		flags["temple_gate_open"]=true
+		_play_sfx("door")
 		_show_message("The temple gate opens from this side.")
 		_deactivate_entry(e,true)
 	elif id=="heart_gate":
 		if flags["bell_sigil"]:
 			flags["heart_gate_open"]=true
+			_play_sfx("door")
 			_show_message("The Bell Sigil sinks into the lock.")
 			_deactivate_entry(e,true)
 		else:
@@ -738,6 +853,7 @@ func _open_ritual():
 	_show_dialogue("A ritual circle is carved into the stone.\n\nThe grooves are dark, but not dry.",choices)
 
 func _ritual_pray():
+	_play_sfx("ritual")
 	if not flags["ritual_prayed"]:
 		flags["ritual_prayed"]=true
 		mind=min(100.0,mind+22)
@@ -746,6 +862,7 @@ func _ritual_pray():
 	_close_dialogue()
 
 func _ritual_coin():
+	_play_sfx("ritual")
 	if flags["bell_sigil"]:
 		_show_message("The circle has already answered.")
 	elif coins<3:
@@ -758,6 +875,7 @@ func _ritual_coin():
 	_close_dialogue()
 
 func _ritual_blood():
+	_play_sfx("ritual")
 	if not flags["blood_rite"]:
 		flags["blood_rite"]=true
 		body=max(1.0,body-22)
@@ -776,6 +894,8 @@ func _open_shrine():
 	])
 
 func _start_battle(e:Dictionary):
+	enemy_battle_lock=true
+	_play_sfx("battle_start")
 	battle_source_id=String(e["id"])
 	var total=int(e["body"])
 	battle_enemy={
@@ -806,6 +926,7 @@ func _battle_attack(part:String):
 	var chance={"Head":0.58,"Torso":0.93,"Left Arm":0.82,"Right Arm":0.82,"Legs":0.78}[part]
 	var dmg=randi_range(15,23)+_weapon_bonus()
 	if randf()<=chance:
+		_play_sfx("hit")
 		battle_enemy["parts"][part]=maxi(0,int(battle_enemy["parts"][part])-dmg)
 		battle_enemy["body"]=maxi(0,int(battle_enemy["body"])-dmg)
 		battle_log.append_text("\nYou strike [b]"+part+"[/b] for "+str(dmg)+".")
@@ -921,6 +1042,7 @@ func _end_battle(_victory:bool):
 	battle_enemy={}
 	battle_source_id=""
 	game_mode="explore"
+	enemy_battle_lock=false
 
 func _refresh_battle_stats():
 	if battle_enemy.is_empty():return
@@ -1062,9 +1184,13 @@ func _load_game():
 		var id=String(rid);removed_ids.append(id)
 		if world_nodes.has(id):_deactivate_entry(world_nodes[id],false)
 	var p=data.get("player_pos",[-470,40]);player.position=Vector2(float(p[0]),float(p[1]))
-	title_overlay.visible=false;ending_overlay.visible=false;game_mode="explore"
+	title_overlay.visible=false;ending_overlay.visible=false
 	maren_follower.position=player.position+Vector2(-48,34)
-	_show_message("The sealed memory returns.")
+	_show_story_card(
+		"MEMORY RESTORED",
+		"Your last sealed memory returns in fragments. The trail still leads deeper beneath the city, toward the Bell and the person who sent the impossible letter.",
+		_current_objective()
+	)
 
 func _deactivate_entry(e:Dictionary,remember:bool):
 	e["active"]=false
@@ -1105,6 +1231,38 @@ func _show_dialogue(text:String,choices:Array):
 func _close_dialogue():
 	dialogue_panel.visible=false
 	if game_mode!="ending":game_mode="explore"
+
+func _build_audio():
+	ambient_player=AudioStreamPlayer.new()
+	ambient_player.name="Ambient"
+	ambient_player.volume_db=-17.0
+	add_child(ambient_player)
+	sfx_player=AudioStreamPlayer.new()
+	sfx_player.name="SFX"
+	sfx_player.volume_db=-5.0
+	add_child(sfx_player)
+	battle_music_player=AudioStreamPlayer.new()
+	battle_music_player.name="BattleAudio"
+	battle_music_player.volume_db=-9.0
+	add_child(battle_music_player)
+	var ambient=_load_audio("res://assets/audio/ambient.wav")
+	if ambient:
+		ambient_player.stream=ambient
+		ambient_player.finished.connect(func(): ambient_player.play())
+		ambient_player.play()
+
+func _load_audio(path:String) -> AudioStream:
+	if ResourceLoader.exists(path):
+		return load(path) as AudioStream
+	return null
+
+func _play_sfx(name:String):
+	if not sfx_player:return
+	var stream=_load_audio("res://assets/audio/"+name+".wav")
+	if stream:
+		sfx_player.stop()
+		sfx_player.stream=stream
+		sfx_player.play()
 
 func _show_message(text:String):
 	if not message_label:return
@@ -1151,6 +1309,7 @@ func _update_title_animation(delta):
 		title_elapsed=0.0;title_frame_index=(title_frame_index+1)%title_frames.size();title_background.texture=title_frames[title_frame_index]
 
 func _new_game():
+	_play_sfx("ui")
 	body=100;mind=100;hunger=100;torch=100;bleeding=false;infected=false;fractured=false;torch_on=true;coins=0
 	story_seen={"intro":true,"infirmary":false,"temple":false,"heart":false,"boss":false}
 	player.position=Vector2(-470,40)
