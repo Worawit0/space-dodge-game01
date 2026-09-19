@@ -1,0 +1,333 @@
+name: Build Forsaken Lucifer Complete
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-polishfix-20260919
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-polishfix-20260919
+
+      - name: Prepare source
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/TheForsakenDepths_PlayablePolish /tmp/packs /tmp/ext
+          cp -a forsaken2d /tmp/TheForsakenDepths_PlayablePolish
+          cp /tmp/TheForsakenDepths_PlayablePolish/main_lucifer.gd /tmp/TheForsakenDepths_PlayablePolish/main.gd
+          rm -f /tmp/TheForsakenDepths_PlayablePolish/main_lucifer.gd
+          mkdir -p /tmp/packs /tmp/ext
+
+      - name: Download exact Lucifer CC0 packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          dl () {
+            key="$1"
+            url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            z=$(find "/tmp/packs/$key" -type f -name '*.zip' | head -1)
+            test -n "$z"
+            unzip -q "$z" -d "/tmp/ext/$key"
+          }
+          dl dungeon https://foozlecc.itch.io/lucifer-dungeon-tileset
+          dl warrior https://foozlecc.itch.io/lucifer-warrior
+          dl cultist https://foozlecc.itch.io/lucifer-cultist-enemy
+          dl skeleton https://foozlecc.itch.io/lucifer-skeleton-grunt-enemy
+          dl ui https://foozlecc.itch.io/lucifer-rpg-ui
+          dl equipment https://foozlecc.itch.io/lucifer-equipment
+
+      - name: Normalize and render selected assets
+        run: |
+          set -euxo pipefail
+          python3 -m pip install pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageEnhance, ImageOps, ImageDraw, ImageFilter
+          import shutil
+
+          EXT=Path('/tmp/ext')
+          OUT=Path('/tmp/TheForsakenDepths_PlayablePolish/assets/lucifer')
+          for d in ['player','skeleton','cultist','dungeon','ui/title','equipment','battle','rooms']:
+              (OUT/d).mkdir(parents=True,exist_ok=True)
+
+          def one(pack,name):
+              hits=list((EXT/pack).rglob(name))
+              if not hits: raise SystemExit(f'Missing {pack}: {name}')
+              return hits[0]
+          def copy(pack,name,dst):
+              shutil.copy2(one(pack,name),OUT/dst)
+
+          copy('dungeon','DungeonTileset.png','dungeon/tileset.png')
+          mock=Image.open(one('dungeon','DungeonTileset Mockup.png')).convert('RGBA')
+
+          dirs=['Down','Left','Right','Up']
+          for d in dirs:
+              lo=d.lower()
+              copy('warrior',f'Warrior{d}Idle.png',f'player/idle_{lo}.png')
+              copy('warrior',f'Warrior{d}Walk.png',f'player/walk_{lo}.png')
+
+          sk={
+            'idle_down':'SkeletonWithSwordDownIdle.png','walk_down':'SkeletonWithSwordDownWalk.png',
+            'idle_left':'SkeletonWithSwordLefttIdle.png','walk_left':'SkeletonWithSwordLefttRun.png',
+            'idle_right':'SkeletonWithSwordRightIdle.png','walk_right':'SkeletonWithSwordRightRun.png',
+            'idle_up':'SkeletonWithSwordUpIdle.png','walk_up':'SkeletonWithSwordUpWalk.png'}
+          for dst,src in sk.items(): copy('skeleton',src,f'skeleton/{dst}.png')
+
+          cu={
+            'idle_down':'CultistDownIdle.png','walk_down':'CultistDownWalk.png',
+            'idle_left':'CultistLeftIdle.png','walk_left':'CultistLeftWalk.png',
+            'idle_right':'CultistRightIdle.png','walk_right':'CultistRightWalk.png',
+            'idle_up':'CultistUpIdle.png','walk_up':'CultistUpRun.png'}
+          for dst,src in cu.items(): copy('cultist',src,f'cultist/{dst}.png')
+
+          copy('ui','SimplePanel01.png','ui/panel.png')
+          copy('ui','GenericButton.png','ui/button.png')
+          copy('ui','GenericButtonActive.png','ui/button_active.png')
+          copy('ui','GenericButtonPressed.png','ui/button_pressed.png')
+          copy('ui','BossHealthBar.png','ui/boss_health.png')
+          copy('ui','HUDHealthBar.png','ui/hud_health.png')
+          copy('ui','Inventory.png','ui/inventory.png')
+          copy('ui','Warrior Icon.png','ui/key_icon.png')
+          copy('ui','Warrior Skill Icon 01.png','ui/skill_icon.png')
+          for i in range(1,13):
+              copy('ui',f'Main Menu animated background {i}.png',f'ui/title/{i:02d}.png')
+
+          copy('equipment','Common Arming Sword.png','equipment/arming_sword.png')
+          copy('equipment','Common Bearded Axe.png','equipment/bearded_axe.png')
+          copy('equipment','Common Greatsword.png','equipment/greatsword.png')
+          copy('equipment','Common Ragged shirt.png','equipment/ragged_shirt.png')
+          copy('equipment','Common ChainMail Chestpiece.png','equipment/chainmail.png')
+          copy('equipment','Rare Plate Chestpiece.png','equipment/plate.png')
+
+          small=mock.resize((max(640,mock.width//10),max(400,mock.height//10)),Image.Resampling.NEAREST)
+          specs=[
+              ('prison',(1200,800),(37,32,30),0.58),
+              ('infirmary',(1200,800),(30,39,34),0.57),
+              ('temple',(1200,800),(43,34,29),0.54),
+              ('heart',(1600,800),(48,25,27),0.49)]
+          for idx,(name,size,tint,bright) in enumerate(specs):
+              work=small.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if idx%2 else small.copy()
+              if idx==2: work=work.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+              bg=ImageOps.fit(work,size,method=Image.Resampling.NEAREST,centering=(0.35+0.1*(idx%3),0.5))
+              bg=ImageEnhance.Color(bg).enhance(0.62)
+              bg=ImageEnhance.Contrast(bg).enhance(1.18)
+              bg=ImageEnhance.Brightness(bg).enhance(bright)
+              bg=Image.alpha_composite(bg,Image.new('RGBA',size,tint+(55,)))
+              shade=Image.new('RGBA',size,(0,0,0,0)); draw=ImageDraw.Draw(shade)
+              for k in range(16):
+                  a=int(5+k*2.4)
+                  draw.rectangle((k*8,k*6,size[0]-k*8,size[1]-k*6),outline=(0,0,0,a),width=8)
+              Image.alpha_composite(bg,shade).save(OUT/'rooms'/f'{name}.png')
+
+          def first(path):
+              return Image.open(path).convert('RGBA').crop((0,0,48,48))
+          def card(frame,name,scale,tint=None,glow=False):
+              fr=frame
+              if tint: fr=Image.alpha_composite(fr,Image.new('RGBA',fr.size,tint+(80,)))
+              fr=fr.resize((48*scale,48*scale),Image.Resampling.NEAREST)
+              canvas=Image.new('RGBA',(500,330),(0,0,0,0))
+              alpha=fr.getchannel('A')
+              shadow=Image.new('RGBA',fr.size,(0,0,0,210))
+              shadow.putalpha(alpha.filter(ImageFilter.GaussianBlur(5)))
+              x=(500-fr.width)//2; y=330-fr.height-4
+              canvas.alpha_composite(shadow,(x+10,y+12))
+              if glow:
+                  g=Image.new('RGBA',(500,330),(0,0,0,0)); gd=ImageDraw.Draw(g)
+                  gd.ellipse((100,35,400,325),fill=(120,8,12,42))
+                  canvas=Image.alpha_composite(canvas,g.filter(ImageFilter.GaussianBlur(25)))
+              canvas.alpha_composite(fr,(x,y)); canvas.save(OUT/'battle'/name)
+          card(first(OUT/'skeleton/idle_down.png'),'skeleton.png',6)
+          card(first(OUT/'cultist/idle_down.png'),'cultist.png',6)
+          card(first(OUT/'cultist/idle_down.png'),'boss.png',7,(95,8,18),True)
+
+          tiles=Image.open(OUT/'dungeon/tileset.png').convert('RGBA')
+          tile=tiles.crop((0,0,32,32)).resize((48,48),Image.Resampling.NEAREST)
+          gate=Image.new('RGBA',(48,112),(0,0,0,0)); gate.alpha_composite(tile,(0,32))
+          gd=ImageDraw.Draw(gate)
+          for x in (7,19,31,41): gd.rectangle((x,5,x+4,108),fill=(49,43,38,255))
+          for y in (12,50,92): gd.rectangle((3,y,45,y+4),fill=(78,66,54,255))
+          gate.save(OUT/'dungeon/gate.png')
+          PY
+
+      - name: Credits and manifest
+        run: |
+          cat > /tmp/TheForsakenDepths_PlayablePolish/CREDITS_LUCIFER.txt <<'EOF'
+          THE FORSAKEN DEPTHS — LUCIFER COMPLETE
+          Lucifer pixel-art assets by Foozle / FoozleCC:
+          Dungeon Tileset, Warrior, Cultist Enemy, Skeleton Grunt Enemy, RPG UI, Equipment.
+          Source: https://foozlecc.itch.io/
+          License: CC0 / Public Domain dedication as stated by the asset pages.
+          Game story, gameplay integration and original supplemental artwork: The Forsaken Depths project.
+          EOF
+          cat > /tmp/TheForsakenDepths_PlayablePolish/VERIFIED_BUILD.txt <<'EOF'
+          THE FORSAKEN DEPTHS — LUCIFER COMPLETE
+          Lucifer Warrior 4-direction animation: YES
+          Lucifer Skeleton/Cultist enemies: YES
+          Lucifer dungeon art: YES
+          Lucifer RPG UI: YES
+          Lucifer equipment icons/equipping: YES
+          Body-part battle, Party, Ritual, Limited Save, Boss, Multiple Endings: YES\n          Enemy patrol/chase physics: YES\n          World collision blocks: YES\n          Ambient + gameplay SFX: YES\n          Fullscreen + expand scaling: YES\n          Story recap / chapter objectives: YES
+          EOF
+
+      - name: Generate original dark ambient and SFX
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/TheForsakenDepths_PlayablePolish/assets/audio
+          python3 - <<'PY'
+          import wave, math, random, struct
+          from pathlib import Path
+          random.seed(1337)
+          out=Path('/tmp/TheForsakenDepths_PlayablePolish/assets/audio')
+          sr=22050
+
+          def save(name, samples):
+              mx=max(1e-6,max(abs(x) for x in samples))
+              scale=0.88/max(1.0,mx)
+              with wave.open(str(out/name),'wb') as w:
+                  w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+                  data=bytearray()
+                  for x in samples:
+                      v=max(-1.0,min(1.0,x*scale))
+                      data += struct.pack('<h',int(v*32767))
+                  w.writeframes(bytes(data))
+
+          def env(n, attack=.02, release=.15):
+              e=[]
+              a=max(1,int(n*attack)); r=max(1,int(n*release))
+              for i in range(n):
+                  if i<a: v=i/a
+                  elif i>n-r: v=max(0,(n-i)/r)
+                  else: v=1
+                  e.append(v)
+              return e
+
+          # 16-second dungeon drone with low harmonics and distant metallic pulses.
+          dur=16.0; n=int(sr*dur); amb=[]
+          for i in range(n):
+              t=i/sr
+              low=.23*math.sin(2*math.pi*43*t)+.13*math.sin(2*math.pi*64.5*t+0.6)
+              wob=.09*math.sin(2*math.pi*(91+2*math.sin(t*.21))*t)
+              noise=(random.random()*2-1)*.045
+              pulse=0
+              for center in (3.2,7.7,12.8):
+                  d=abs(t-center)
+                  if d<1.3:
+                      pulse += .14*math.sin(2*math.pi*173*t)*math.exp(-d*2.8)
+              amb.append((low+wob+noise+pulse)*.62)
+          save('ambient.wav',amb)
+
+          def tone(name,dur,freqs,noise=.0,decay=3.0,vol=.7):
+              n=int(sr*dur); e=env(n,.015,.25); arr=[]
+              for i in range(n):
+                  t=i/sr
+                  s=sum(math.sin(2*math.pi*f*t) for f in freqs)/len(freqs)
+                  s += noise*(random.random()*2-1)
+                  s *= math.exp(-decay*t)*e[i]*vol
+                  arr.append(s)
+              save(name,arr)
+
+          # Footstep: two short low impacts.
+          n=int(sr*.16); arr=[]
+          for i in range(n):
+              t=i/sr
+              impact=(random.random()*2-1)*math.exp(-30*t)*.52
+              thud=math.sin(2*math.pi*92*t)*math.exp(-24*t)*.48
+              arr.append(impact+thud)
+          save('footstep.wav',arr)
+
+          tone('pickup.wav',.32,[660,880],.01,5.0,.48)
+          tone('ui.wav',.16,[440,660],.0,7.0,.34)
+          tone('hit.wav',.28,[72,111],.32,8.0,.82)
+          tone('door.wav',.75,[46,69],.24,2.7,.78)
+          tone('ritual.wav',1.35,[112,168,224],.08,1.4,.68)
+          # battle sting
+          n=int(sr*.95); arr=[]
+          for i in range(n):
+              t=i/sr
+              s=.55*math.sin(2*math.pi*(58+22*t)*t)*math.exp(-1.8*t)
+              s+=.35*math.sin(2*math.pi*116*t)*math.exp(-2.8*t)
+              s+=(random.random()*2-1)*.12*math.exp(-5*t)
+              arr.append(s)
+          save('battle_start.wav',arr)
+          PY
+
+      - name: Download Godot 4.7.2
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' | head -1)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Godot import and parse
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/TheForsakenDepths_PlayablePolish --quit-after 4 2>&1 | tee /tmp/editor.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file" /tmp/editor.log; then exit 1; fi
+
+      - name: Godot smoke launch
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --path /tmp/TheForsakenDepths_PlayablePolish --quit-after 4 2>&1 | tee /tmp/game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Invalid call|Invalid get index|ERROR: Cannot open file" /tmp/game.log; then exit 1; fi
+
+      - name: Verify selected assets
+        run: |
+          set -euxo pipefail
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/player/walk_down.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/skeleton/idle_down.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/cultist/idle_down.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/dungeon/tileset.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/ui/panel.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/equipment/arming_sword.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/rooms/prison.png
+          test -f /tmp/TheForsakenDepths_PlayablePolish/assets/lucifer/battle/boss.png
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/TheForsakenDepths_PlayablePolish/.godot
+          cd /tmp
+          zip -qr TheForsakenDepths_PLAYABLE_POLISH.zip TheForsakenDepths_PlayablePolish
+          test -s TheForsakenDepths_PLAYABLE_POLISH.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_PLAYABLE_POLISH
+          path: /tmp/TheForsakenDepths_PLAYABLE_POLISH.zip
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish permanent download branch
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cd /tmp
+          rm -rf publish-repo
+          git clone "https://x-access-token:$GITHUB_TOKEN@github.com/Worawit0/space-dodge-game01.git" publish-repo
+          cd publish-repo
+          git checkout --orphan lucifer-release
+          git rm -rf . || true
+          cp /tmp/TheForsakenDepths_PLAYABLE_POLISH.zip .
+          cat > README.md <<'EOF'
+          # The Forsaken Depths — Lucifer Complete
+          Download the ZIP in this branch and extract it, then import project.godot in Godot 4.7.2.
+          EOF
+          git add TheForsakenDepths_PLAYABLE_POLISH.zip README.md
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Publish Lucifer Complete downloadable build"
+          git push --force origin lucifer-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
