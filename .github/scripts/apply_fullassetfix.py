@@ -17,6 +17,47 @@ def replace(old, new, name):
         raise SystemExit(f"fullassetfix: missing {name}")
     s = s.replace(old, new, 1)
 
+# Make texture loading robust in CI, editor and exported builds.
+sub(
+r'func _load_tex\(path:String\) -> Texture2D:\n.*?(?=\nfunc _build_world_visuals)',
+r'''func _load_tex(path:String) -> Texture2D:
+	if ResourceLoader.exists(path):
+		var resource = load(path) as Texture2D
+		if resource:
+			return resource
+	# Raw-file fallback is important for freshly generated/copied PNGs before Godot import metadata settles.
+	var absolute_path = ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(absolute_path):
+		var image = Image.new()
+		var err = image.load(absolute_path)
+		if err == OK and not image.is_empty():
+			return ImageTexture.create_from_image(image)
+	return null
+''',
+"robust texture loader"
+)
+
+# All strip animations use the same robust loader instead of silently returning an empty SpriteFrames.
+sub(
+r'func _add_strip_animation\(frames:SpriteFrames,name:String,path:String,frame_width:int,fps:float,looping:bool\):.*?(?=\nfunc _build_world_content)',
+r'''func _add_strip_animation(frames:SpriteFrames,name:String,path:String,frame_width:int,fps:float,looping:bool):
+	var tex = _load_tex(path)
+	if not tex:
+		push_error("Animation texture missing: "+path)
+		return
+	frames.add_animation(name)
+	frames.set_animation_speed(name,fps)
+	frames.set_animation_loop(name,looping)
+	var count = maxi(1,int(tex.get_width()/frame_width))
+	for i in range(count):
+		var atlas = AtlasTexture.new()
+		atlas.atlas = tex
+		atlas.region = Rect2(i*frame_width,0,frame_width,tex.get_height())
+		frames.add_frame(name,atlas)
+''',
+"strip animation loader"
+)
+
 # New save namespace so old broken saves cannot leak state into the fixed build.
 s = s.replace(
     'const SAVE_PATH := "user://forsaken_depths_cinematic_v4_save.json"',
