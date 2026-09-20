@@ -60,3 +60,44 @@ jobs:
                   except Exception as e:
                       print('ERR',p,e)
           PY
+
+      - name: Analyze Demon Door sheet
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          p=next(Path('/tmp/ext/door').rglob('!Demon Door.png'))
+          im=Image.open(p).convert('RGBA')
+          print('door mode/size',im.mode,im.size)
+          a=im.getchannel('A')
+          print('alpha extrema',a.getextrema())
+          # Occupancy in a 12x8 grid helps identify the author sheet layout.
+          W,H=im.size
+          for gy in range(8):
+              row=[]
+              for gx in range(12):
+                  box=(gx*W//12,gy*H//8,(gx+1)*W//12,(gy+1)*H//8)
+                  crop=im.crop(box)
+                  alpha=crop.getchannel('A')
+                  nz=sum(1 for v in alpha.getdata() if v>8)
+                  row.append(round(nz/(crop.width*crop.height),2))
+              print('GRID',gy,row)
+          # Find transparent separators.
+          pix=a.load()
+          cols=[]
+          for x in range(W):
+              if max(pix[x,y] for y in range(0,H,8))<=8: cols.append(x)
+          rows=[]
+          for y in range(H):
+              if max(pix[x,y] for x in range(0,W,8))<=8: rows.append(y)
+          def runs(vals):
+              out=[]
+              if not vals:return out
+              a=b=vals[0]
+              for v in vals[1:]:
+                  if v==b+1:b=v
+                  else:out.append((a,b));a=b=v
+              out.append((a,b));return out
+          print('transparent col runs',runs(cols)[:50])
+          print('transparent row runs',runs(rows)[:50])
+          PY
