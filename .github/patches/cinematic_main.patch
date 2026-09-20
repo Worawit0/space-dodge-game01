@@ -1,0 +1,302 @@
+--- main.gd
++++ main.gd
+@@ -1,6 +1,6 @@
+ extends Node2D
+ 
+-const SAVE_PATH := "user://forsaken_depths_overhaul_v3_save.json"
++const SAVE_PATH := "user://forsaken_depths_cinematic_v4_save.json"
+ const WORLD_TOP := -400.0
+ const WORLD_BOTTOM := 400.0
+ const WORLD_LEFT := -600.0
+@@ -89,7 +89,13 @@
+ var dialogue_text: RichTextLabel
+ var dialogue_choices: VBoxContainer
+ 
++var ritual_overlay: ColorRect
++var ritual_background: TextureRect
++var ritual_text: RichTextLabel
++var ritual_choices: VBoxContainer
++
+ var inventory_overlay: ColorRect
++var inventory_background: TextureRect
+ var inventory_desc: RichTextLabel
+ var inventory_list: VBoxContainer
+ var inventory_current_tab := "Item"
+@@ -98,6 +104,7 @@
+ var inventory_status: RichTextLabel
+ 
+ var battle_overlay: ColorRect
++var battle_background: TextureRect
+ var battle_enemy_art: TextureRect
+ var battle_enemy_name: Label
+ var battle_log: RichTextLabel
+@@ -117,6 +124,7 @@
+ var journal_overlay: ColorRect
+ var journal_text: RichTextLabel
+ var story_overlay: ColorRect
++var story_background: TextureRect
+ var story_title: Label
+ var story_text: RichTextLabel
+ var story_continue: Button
+@@ -193,6 +201,8 @@
+ 			_close_inventory()
+ 		elif game_mode == "dialogue":
+ 			_close_dialogue()
++		elif game_mode == "ritual":
++			_close_ritual()
+ 		elif game_mode == "journal":
+ 			_close_journal()
+ 
+@@ -267,35 +277,26 @@
+ 	holder.position=center
+ 	holder.z_index=1
+ 	add_child(holder)
+-	var poly=Polygon2D.new()
+-	poly.polygon=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2)])
+-	poly.color=Color(0.065,0.052,0.050,0.99)
+-	holder.add_child(poly)
+-
+-	# Brick courses are purely visual but use the exact same wall rectangle as physics.
+-	var rows=maxi(2,int(size.y/34.0))
+-	for row in range(1,rows):
+-		var y=-size.y/2.0+row*(size.y/rows)
+-		var line=Line2D.new()
+-		line.points=PackedVector2Array([Vector2(-size.x/2,y),Vector2(size.x/2,y)])
+-		line.width=2.0
+-		line.default_color=Color(0.13,0.105,0.095,0.85)
+-		holder.add_child(line)
+-		var offset=0.0 if row%2==0 else 24.0
+-		var x=-size.x/2.0+48.0+offset
+-		while x<size.x/2.0:
+-			var seam=Line2D.new()
+-			var row_h=size.y/rows
+-			seam.points=PackedVector2Array([Vector2(x,y-row_h),Vector2(x,y)])
+-			seam.width=1.4
+-			seam.default_color=Color(0.115,0.09,0.085,0.72)
+-			holder.add_child(seam)
+-			x+=96.0
++
++	var wall=Sprite2D.new()
++	wall.texture=_load_tex("res://assets/lucifer/dungeon/wall_pattern.png")
++	wall.centered=true
++	wall.region_enabled=true
++	wall.region_rect=Rect2(Vector2.ZERO,size)
++	wall.texture_repeat=CanvasItem.TEXTURE_REPEAT_ENABLED
++	wall.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
++	wall.modulate=Color(0.72,0.62,0.55,1.0)
++	holder.add_child(wall)
++
++	var shade=Polygon2D.new()
++	shade.polygon=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2)])
++	shade.color=Color(0.05,0.025,0.02,0.28)
++	holder.add_child(shade)
+ 
+ 	var rim=Line2D.new()
+ 	rim.points=PackedVector2Array([Vector2(-size.x/2,-size.y/2),Vector2(size.x/2,-size.y/2),Vector2(size.x/2,size.y/2),Vector2(-size.x/2,size.y/2),Vector2(-size.x/2,-size.y/2)])
+ 	rim.width=4.0
+-	rim.default_color=Color(0.22,0.17,0.14,1.0)
++	rim.default_color=Color(0.28,0.20,0.16,1.0)
+ 	holder.add_child(rim)
+ 
+ 	var body_node=StaticBody2D.new()
+@@ -761,8 +762,10 @@
+ func _update_visual_effects():
+ 	if player_light:
+ 		player_light.visible = torch_on and torch > 0
+-		player_light.texture_scale = lerp(0.78,1.55,clamp(torch/100.0,0.0,1.0))
+-		player_light.energy = lerp(0.75,1.75,clamp(torch/100.0,0.0,1.0))
++		var fuel=clamp(torch/100.0,0.0,1.0)
++		var flicker=0.94+0.05*sin(elapsed*17.0)+0.025*sin(elapsed*31.0)
++		player_light.texture_scale = lerp(0.78,1.55,fuel)*flicker
++		player_light.energy = lerp(0.75,1.75,fuel)*flicker
+ 	if darkness:
+ 		var low = 1.0-clamp(mind/100.0,0.0,1.0)
+ 		darkness.color = Color(0.21-low*0.06,0.20-low*0.07,0.21-low*0.07,1.0)
+@@ -933,13 +936,27 @@
+ 	_show_message("Maren joins the party.")
+ 
+ func _open_ritual():
+-	var choices:Array=[
+-		{"text":"Pray","call":func():_ritual_pray()},
+-		{"text":"Offer 3 coins","call":func():_ritual_coin()},
+-		{"text":"Offer blood","call":func():_ritual_blood()},
+-		{"text":"Leave","call":func():_close_dialogue()}
+-	]
+-	_show_dialogue("A ritual circle is carved into the stone.\n\nThe grooves are dark, but not dry.",choices)
++	game_mode="ritual"
++	ritual_overlay.visible=true
++	ritual_text.text="วงพิธีสั่นเบา ๆ ใต้ฝ่าเท้าของคุณ\n\nร่องสลักเต็มไปด้วยเลือดแห้งและคราบขี้ผึ้งเก่า บางสิ่งกำลังรอการถวาย"
++	for child in ritual_choices.get_children():
++		child.queue_free()
++	for spec in [
++		["ถวายเหรียญ 3 เหรียญ",Callable(self,"_ritual_coin")],
++		["ถวายเลือด",Callable(self,"_ritual_blood")],
++		["อธิษฐาน",Callable(self,"_ritual_pray")],
++		["ออกไป",Callable(self,"_close_ritual")]
++	]:
++		var b=_button(String(spec[0]))
++		b.custom_minimum_size=Vector2(250,48)
++		b.alignment=HORIZONTAL_ALIGNMENT_LEFT
++		b.pressed.connect(spec[1])
++		ritual_choices.add_child(b)
++
++func _close_ritual():
++	ritual_overlay.visible=false
++	if game_mode!="ending":
++		game_mode="explore"
+ 
+ func _ritual_pray():
+ 	_play_sfx("ritual")
+@@ -948,7 +965,7 @@
+ 		mind=min(100.0,mind+22)
+ 		hunger=max(0.0,hunger-7)
+ 	_show_message("The chamber becomes silent. Your thoughts become your own.")
+-	_close_dialogue()
++	_close_ritual()
+ 
+ func _ritual_coin():
+ 	_play_sfx("ritual")
+@@ -961,7 +978,7 @@
+ 		flags["bell_sigil"]=true
+ 		if not key_items.has("Bell Sigil"):key_items.append("Bell Sigil")
+ 		_show_message("The coins melt into black metal. Obtained: Bell Sigil.")
+-	_close_dialogue()
++	_close_ritual()
+ 
+ func _ritual_blood():
+ 	_play_sfx("ritual")
+@@ -973,7 +990,7 @@
+ 		if not key_items.has("Bell Sigil"): key_items.append("Bell Sigil")
+ 		if not books.has("Rite of the Hollow Palm"): books.append("Rite of the Hollow Palm")
+ 	_show_message("Your blood hardens into black metal. Obtained: Bell Sigil. [BLEEDING]")
+-	_close_dialogue()
++	_close_ritual()
+ 
+ func _open_shrine():
+ 	_show_dialogue("The Deep Shrine is cold to the touch.\n\nA wax seal can bind a memory here.",[
+@@ -997,7 +1014,12 @@
+ 	battle_overlay.visible=true
+ 	dialogue_panel.visible=false
+ 	inventory_overlay.visible=false
++	ritual_overlay.visible=false
+ 	var art=String(e["art"])
++	battle_background.visible=bool(e["boss"])
++	battle_enemy_art.visible=not bool(e["boss"])
++	if bool(e["boss"]):
++		battle_background.texture=_load_tex("res://assets/cinematic/boss_bg.jpg")
+ 	if art=="demon_maw":
+ 		battle_enemy_art.texture=_load_tex("res://assets/horror_maw.svg")
+ 	elif art=="demon_bell":
+@@ -1158,6 +1180,8 @@
+ func _open_inventory():
+ 	game_mode="inventory"
+ 	inventory_overlay.visible=true
++	if inventory_background:
++		inventory_background.visible=true
+ 	inventory_selected=""
+ 	inventory_desc.text="Select an item to inspect it."
+ 	inventory_use_button.visible=false
+@@ -1384,21 +1408,27 @@
+ 	prompt_label=Label.new();prompt_label.position=Vector2(455,646);prompt_label.size=Vector2(370,44);prompt_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;prompt_label.add_theme_font_size_override("font_size",20);root.add_child(prompt_label)
+ 	message_label=Label.new();message_label.position=Vector2(350,30);message_label.size=Vector2(580,90);message_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;message_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;message_label.add_theme_font_size_override("font_size",18);root.add_child(message_label)
+ 
+-	_build_title_ui(root);_build_dialogue_ui(root);_build_inventory_ui(root);_build_battle_ui(root);_build_journal_ui(root);_build_story_ui(root);_build_ending_ui(root)
++	_build_title_ui(root);_build_dialogue_ui(root);_build_ritual_ui(root);_build_inventory_ui(root);_build_battle_ui(root);_build_journal_ui(root);_build_story_ui(root);_build_ending_ui(root)
+ 
+ func _build_title_ui(root:Control):
+ 	title_overlay=ColorRect.new();title_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);title_overlay.color=Color(0.005,0.004,0.005,1);root.add_child(title_overlay)
+-	title_background=TextureRect.new();title_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);title_background.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;title_background.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED;title_background.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST;title_background.modulate=Color(0.45,0.39,0.39,1);title_overlay.add_child(title_background)
+-	if title_frames.size()>0:title_background.texture=title_frames[0]
++	title_background=TextureRect.new();title_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);title_background.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;title_background.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED;title_background.modulate=Color(0.78,0.73,0.70,1);title_overlay.add_child(title_background)
++	var cinematic_title=_load_tex("res://assets/cinematic/title_bg.jpg")
++	if cinematic_title:
++		title_background.texture=cinematic_title
++	elif title_frames.size()>0:
++		title_background.texture=title_frames[0]
+ 	var shade=ColorRect.new();shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);shade.color=Color(0.02,0.01,0.015,0.52);shade.mouse_filter=Control.MOUSE_FILTER_IGNORE;title_overlay.add_child(shade)
+ 	var title=Label.new();title.text="THE FORSAKEN DEPTHS";title.position=Vector2(215,105);title.size=Vector2(850,80);title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;title.add_theme_font_size_override("font_size",48);title_overlay.add_child(title)
+-	var sub=Label.new();sub.text="LUCIFER COMPLETE — DARK SURVIVAL RPG";sub.position=Vector2(370,188);sub.size=Vector2(540,42);sub.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;sub.modulate=Color("#c3ad91");sub.add_theme_font_size_override("font_size",18);title_overlay.add_child(sub)
++	var sub=Label.new();sub.text="DARK SURVIVAL RPG — CINEMATIC OVERHAUL";sub.position=Vector2(370,188);sub.size=Vector2(540,42);sub.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;sub.modulate=Color("#c3ad91");sub.add_theme_font_size_override("font_size",18);title_overlay.add_child(sub)
+ 	var menu=VBoxContainer.new();menu.position=Vector2(485,315);menu.size=Vector2(310,220);title_overlay.add_child(menu)
+ 	var nb=_button("NEW DESCENT");nb.custom_minimum_size=Vector2(310,56);nb.pressed.connect(_new_game);menu.add_child(nb)
+ 	continue_button=_button("CONTINUE");continue_button.custom_minimum_size=Vector2(310,56);continue_button.disabled=not FileAccess.file_exists(SAVE_PATH);continue_button.pressed.connect(_load_game);menu.add_child(continue_button)
+ 	var cb=_button("CONTROLS");cb.custom_minimum_size=Vector2(310,56);cb.pressed.connect(func():message_label.modulate=Color.WHITE;message_label.text="WASD Move   Shift Run   E Interact   I Inventory   T Torch   F9 Load");menu.add_child(cb)
+ 
+ func _update_title_animation(delta):
++	if ResourceLoader.exists("res://assets/cinematic/title_bg.jpg"):
++		return
+ 	if title_frames.is_empty() or not title_overlay.visible:return
+ 	title_elapsed+=delta
+ 	if title_elapsed>=0.12:
+@@ -1435,9 +1465,46 @@
+ 	dialogue_text=RichTextLabel.new();dialogue_text.bbcode_enabled=true;dialogue_text.position=Vector2(28,24);dialogue_text.size=Vector2(760,190);dialogue_text.add_theme_font_size_override("normal_font_size",22);dialogue_text.add_theme_font_size_override("bold_font_size",24);dialogue_panel.add_child(dialogue_text)
+ 	dialogue_choices=VBoxContainer.new();dialogue_choices.position=Vector2(815,24);dialogue_choices.size=Vector2(295,190);dialogue_panel.add_child(dialogue_choices)
+ 
++func _build_ritual_ui(root:Control):
++	ritual_overlay=ColorRect.new()
++	ritual_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
++	ritual_overlay.color=Color.BLACK
++	root.add_child(ritual_overlay)
++	ritual_overlay.visible=false
++
++	ritual_background=TextureRect.new()
++	ritual_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
++	ritual_background.texture=_load_tex("res://assets/cinematic/ritual_bg.jpg")
++	ritual_background.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
++	ritual_background.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED
++	ritual_overlay.add_child(ritual_background)
++
++	var shade=ColorRect.new()
++	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
++	shade.color=Color(0.0,0.0,0.0,0.18)
++	shade.mouse_filter=Control.MOUSE_FILTER_IGNORE
++	ritual_overlay.add_child(shade)
++
++	var text_panel=_make_panel(Vector2(70,535),Vector2(870,150))
++	ritual_overlay.add_child(text_panel)
++	ritual_text=RichTextLabel.new()
++	ritual_text.bbcode_enabled=true
++	ritual_text.position=Vector2(30,22)
++	ritual_text.size=Vector2(810,105)
++	ritual_text.add_theme_font_size_override("normal_font_size",22)
++	text_panel.add_child(ritual_text)
++
++	var choice_panel=_make_panel(Vector2(960,315),Vector2(285,300))
++	ritual_overlay.add_child(choice_panel)
++	ritual_choices=VBoxContainer.new()
++	ritual_choices.position=Vector2(18,18)
++	ritual_choices.size=Vector2(250,260)
++	choice_panel.add_child(ritual_choices)
++
+ func _build_inventory_ui(root:Control):
+ 	inventory_overlay=ColorRect.new();inventory_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);inventory_overlay.color=Color(0.002,0.002,0.003,0.985);root.add_child(inventory_overlay);inventory_overlay.visible=false
+-	var frame=_make_panel(Vector2(105,48),Vector2(1070,620));inventory_overlay.add_child(frame)
++	inventory_background=TextureRect.new();inventory_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);inventory_background.texture=_load_tex("res://assets/cinematic/inventory_bg.jpg");inventory_background.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;inventory_background.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED;inventory_overlay.add_child(inventory_background)
++	var frame=_make_panel(Vector2(80,38),Vector2(1120,640));inventory_overlay.add_child(frame)
+ 
+ 	var header=Label.new()
+ 	header.text="INVENTORY"
+@@ -1462,6 +1529,8 @@
+ 
+ func _build_battle_ui(root:Control):
+ 	battle_overlay=ColorRect.new();battle_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);battle_overlay.color=Color(0.003,0.002,0.003,1);root.add_child(battle_overlay);battle_overlay.visible=false
++	battle_background=TextureRect.new();battle_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);battle_background.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;battle_background.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED;battle_background.modulate=Color(0.78,0.73,0.71,1);battle_background.mouse_filter=Control.MOUSE_FILTER_IGNORE;battle_overlay.add_child(battle_background);battle_background.visible=false
++	var battle_shade=ColorRect.new();battle_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);battle_shade.color=Color(0,0,0,0.16);battle_shade.mouse_filter=Control.MOUSE_FILTER_IGNORE;battle_overlay.add_child(battle_shade)
+ 	battle_enemy_name=Label.new();battle_enemy_name.position=Vector2(350,20);battle_enemy_name.size=Vector2(580,44);battle_enemy_name.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;battle_enemy_name.add_theme_font_size_override("font_size",28);battle_overlay.add_child(battle_enemy_name)
+ 	boss_hp_label=Label.new();boss_hp_label.position=Vector2(515,62);boss_hp_label.size=Vector2(250,30);boss_hp_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;boss_hp_label.modulate=Color("#c8b593");battle_overlay.add_child(boss_hp_label)
+ 	var bossbar=TextureRect.new();bossbar.texture=_load_tex("res://assets/lucifer/ui/boss_health.png");bossbar.position=Vector2(488,88);bossbar.size=Vector2(304,72);bossbar.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;bossbar.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST;battle_overlay.add_child(bossbar)
+@@ -1508,6 +1577,14 @@
+ 	story_overlay.color=Color(0.002,0.002,0.003,0.97)
+ 	root.add_child(story_overlay)
+ 	story_overlay.visible=false
++	story_background=TextureRect.new()
++	story_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
++	story_background.texture=_load_tex("res://assets/cinematic/chapter_temple_bg.jpg")
++	story_background.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
++	story_background.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED
++	story_background.modulate=Color(0.40,0.40,0.40,1)
++	story_overlay.add_child(story_background)
++	var story_shade=ColorRect.new();story_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);story_shade.color=Color(0,0,0,0.42);story_shade.mouse_filter=Control.MOUSE_FILTER_IGNORE;story_overlay.add_child(story_shade)
+ 	var frame=_make_panel(Vector2(145,85),Vector2(990,550))
+ 	story_overlay.add_child(frame)
+ 	story_title=Label.new()
