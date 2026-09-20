@@ -1,0 +1,477 @@
+name: Build Forsaken Depths Full Asset Fix
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-fullassetfix-20260920
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-fullassetfix-20260920
+
+      - name: Prepare project
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenFull /tmp/packs /tmp/ext /tmp/release /tmp/windows
+          cp -a forsaken2d /tmp/ForsakenFull
+          cp /tmp/ForsakenFull/main_lucifer.gd /tmp/ForsakenFull/main.gd
+          rm -f /tmp/ForsakenFull/main_lucifer.gd
+          mkdir -p /tmp/packs /tmp/ext /tmp/release /tmp/windows
+
+      - name: Apply cinematic gameplay patch
+        run: |
+          set -euxo pipefail
+          cd /tmp/ForsakenFull
+          patch --forward main.gd < "$GITHUB_WORKSPACE/.github/patches/cinematic_main.patch"
+          grep -q 'forsaken_depths_cinematic_v4_save' main.gd
+          grep -q '_build_ritual_ui' main.gd
+
+      - name: Apply full asset and gameplay fixes
+        run: |
+          set -euxo pipefail
+          cd /tmp/ForsakenFull
+          python3 "$GITHUB_WORKSPACE/.github/scripts/apply_fullassetfix.py"
+          grep -q 'forsaken_depths_fullasset_v5_save' main.gd
+          grep -q '_build_full_enemy_frames' main.gd
+          grep -q 'EQUIP WEAPON' main.gd
+
+      - name: Download Lucifer CC0 source packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          dl () {
+            key="$1"; url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            z=$(find "/tmp/packs/$key" -type f -name '*.zip' | head -1)
+            test -n "$z"
+            unzip -q "$z" -d "/tmp/ext/$key"
+          }
+          dl dungeon https://foozlecc.itch.io/lucifer-dungeon-tileset
+          dl warrior https://foozlecc.itch.io/lucifer-warrior
+          dl cultist https://foozlecc.itch.io/lucifer-cultist-enemy
+          dl skeleton https://foozlecc.itch.io/lucifer-skeleton-grunt-enemy
+          dl ui https://foozlecc.itch.io/lucifer-rpg-ui
+          dl equipment https://foozlecc.itch.io/lucifer-equipment
+
+      - name: Download uploaded-equivalent free asset packs
+        run: |
+          set -euxo pipefail
+          dl2 () {
+            key="$1"; url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            z=$(find "/tmp/packs/$key" -type f -name '*.zip' | head -1)
+            test -n "$z"
+            unzip -q "$z" -d "/tmp/ext/$key"
+          }
+          dl2 boss https://chierit.itch.io/boss-demon-slime
+          dl2 demon https://xzany.itch.io/flying-demon-2d-pixel-art
+          dl2 tiny https://zerie.itch.io/tiny-rpg-character-asset-pack
+          dl2 cave https://au-pixel.itch.io/free-monster
+          dl2 infernus https://pvgames.itch.io/infernus-tileset
+
+          mkdir -p /tmp/packs/horrorsfx /tmp/ext/horrorsfx
+          itchio-downloader --url https://liminal-space-dev.itch.io/free-horror-sfx-sounds --downloadDirectory /tmp/packs/horrorsfx
+          sfxzip=$(find /tmp/packs/horrorsfx -type f -name 'horror_sfx_vol_1.zip' | head -1)
+          if [ -z "$sfxzip" ]; then sfxzip=$(find /tmp/packs/horrorsfx -type f -name '*.zip' | head -1); fi
+          test -n "$sfxzip"
+          unzip -q "$sfxzip" -d /tmp/ext/horrorsfx
+
+      - name: Normalize new monsters props and horror audio
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import shutil, re
+
+          ROOT=Path('/tmp/ext')
+          GAME=Path('/tmp/ForsakenFull')
+          FULL=GAME/'assets/full'
+          AUDIO=GAME/'assets/audio'
+          for d in [
+              FULL/'enemies/demon_slime',FULL/'enemies/flying_demon',
+              FULL/'enemies/orc',FULL/'enemies/cave',
+              FULL/'props',FULL/'source_ui'
+          ]:
+              d.mkdir(parents=True,exist_ok=True)
+          AUDIO.mkdir(parents=True,exist_ok=True)
+
+          def one(pack,name):
+              hits=[p for p in (ROOT/pack).rglob(name) if p.is_file()]
+              if not hits:
+                  raise SystemExit(f'Missing {pack}: {name}')
+              return hits[0]
+
+          def numkey(p):
+              m=re.search(r'(\d+)(?=\.png$)',p.name)
+              return int(m.group(1)) if m else 0
+
+          def copy_sequence(pack,folder_fragment,prefix,outdir,outprefix):
+              paths=[p for p in (ROOT/pack).rglob('*.png') if folder_fragment in str(p).replace('\\','/') and p.name.startswith(prefix)]
+              paths=sorted(paths,key=numkey)
+              if not paths:
+                  raise SystemExit(f'No frames {pack} {folder_fragment} {prefix}')
+              for i,p in enumerate(paths):
+                  shutil.copy2(p,outdir/f'{outprefix}_{i:02d}.png')
+              return len(paths)
+
+          # Demon Slime boss: free pack contains idle, walk, cleave, hit and death as individual 288x160 frames.
+          bossout=FULL/'enemies/demon_slime'
+          assert copy_sequence('boss','01_demon_idle','demon_idle_',bossout,'idle') == 6
+          assert copy_sequence('boss','02_demon_walk','demon_walk_',bossout,'walk') == 12
+          copy_sequence('boss','03_demon_cleave','demon_cleave_',bossout,'attack')
+          copy_sequence('boss','04_demon_take_hit','demon_take_hit_',bossout,'hurt')
+          copy_sequence('boss','05_demon_death','demon_death_',bossout,'death')
+
+          # Flying Demon: split horizontal sheets. With-outline pack is 81x71 per frame.
+          dout=FULL/'enemies/flying_demon'
+          def split_sheet(src,count,prefix):
+              im=Image.open(src).convert('RGBA')
+              fw=im.width//count
+              for i in range(count):
+                  im.crop((i*fw,0,(i+1)*fw,im.height)).save(dout/f'{prefix}_{i:02d}.png')
+          split_sheet(one('demon','IDLE.png'),4,'idle')
+          split_sheet(one('demon','FLYING.png'),4,'walk')
+          split_sheet(one('demon','ATTACK.png'),8,'attack')
+          split_sheet(one('demon','HURT.png'),4,'hurt')
+          split_sheet(one('demon','DEATH.png'),7,'death')
+
+          # Tiny RPG Orc: exact 100x100 cells, clean top-down-ish humanoid enemy.
+          oout=FULL/'enemies/orc'
+          def split_orc(name,count,prefix):
+              candidates=[p for p in (ROOT/'tiny').rglob(name) if '/Orc/Orc/' in str(p).replace('\\','/')]
+              if not candidates:
+                  candidates=list((ROOT/'tiny').rglob(name))
+              src=candidates[0]
+              im=Image.open(src).convert('RGBA')
+              for i in range(count):
+                  im.crop((i*100,0,(i+1)*100,100)).save(oout/f'{prefix}_{i:02d}.png')
+          split_orc('Orc_Idle.png',6,'idle')
+          split_orc('Orc_Walk.png',8,'walk')
+          split_orc('Orc_Attack01.png',6,'attack')
+          split_orc('Orc_Hurt.png',4,'hurt')
+          split_orc('Orc_Death.png',4,'death')
+
+          # Cave pack is retained for later encounters and verification.
+          shutil.copy2(one('cave','bat_spritesheet(80x80).png'),FULL/'enemies/cave/bat_sheet.png')
+          shutil.copy2(one('cave','snake_spritesheet(64x64).png'),FULL/'enemies/cave/snake_sheet.png')
+
+          # PVGames Infernus props: selected readable pieces only.
+          props={
+              'cage.png':'Infernus_Cage_3.png',
+              'altar.png':'Infernus_Altar1_1.png',
+              'gore.png':'Infernus_GorePile_5.png',
+              'lantern.png':'Infernus_WallLantern_3.png',
+              'shelf.png':'Infernus_Shelf_4.png',
+              'pillar.png':'Infernus_Pillar_2.png',
+              'skull.png':'Infernus_Skull1_1.png',
+              'book.png':'Infernus_Book1_1.png',
+          }
+          for dst,src in props.items():
+              shutil.copy2(one('infernus',src),FULL/'props'/dst)
+
+          # Real CC0 horror sounds from the same horror_sfx_vol_1 pack the user uploaded.
+          soundmap={
+              'ambient.mp3':'Ambient Wind (1).mp3',
+              'footstep.mp3':'Metal Footsteps (1).mp3',
+              'door.mp3':'Creaking Door (3).mp3',
+              'monster_growl.mp3':'Monster Growl (1).mp3',
+          }
+          for dst,src in soundmap.items():
+              shutil.copy2(one('horrorsfx',src),AUDIO/dst)
+
+          # Sanity checks: no zero-byte visual/audio assets.
+          checks=[
+              FULL/'enemies/demon_slime/idle_00.png',
+              FULL/'enemies/flying_demon/idle_00.png',
+              FULL/'enemies/orc/idle_00.png',
+              FULL/'props/cage.png',
+              AUDIO/'ambient.mp3',AUDIO/'monster_growl.mp3'
+          ]
+          for p in checks:
+              if not p.exists() or p.stat().st_size < 100:
+                  raise SystemExit(f'Bad normalized asset: {p}')
+              print(p.relative_to(GAME),p.stat().st_size)
+          PY
+
+      - name: Normalize assets and generate clean floors
+        run: |
+          set -euxo pipefail
+          python3 -m pip install pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageStat
+          import shutil, random
+
+          random.seed(20260919)
+          EXT=Path('/tmp/ext')
+          OUT=Path('/tmp/ForsakenFull/assets/lucifer')
+          for d in ['player','skeleton','cultist','dungeon','ui/title','equipment','rooms']:
+              (OUT/d).mkdir(parents=True,exist_ok=True)
+
+          def one(pack,name):
+              hits=list((EXT/pack).rglob(name))
+              if not hits:
+                  raise SystemExit(f'Missing {pack}: {name}')
+              return hits[0]
+          def copy(pack,name,dst):
+              shutil.copy2(one(pack,name),OUT/dst)
+
+          copy('dungeon','DungeonTileset.png','dungeon/tileset.png')
+          mock=Image.open(one('dungeon','DungeonTileset Mockup.png')).convert('RGBA')
+
+          for d in ['Down','Left','Right','Up']:
+              lo=d.lower()
+              copy('warrior',f'Warrior{d}Idle.png',f'player/idle_{lo}.png')
+              copy('warrior',f'Warrior{d}Walk.png',f'player/walk_{lo}.png')
+
+          sk={
+            'idle_down':'SkeletonWithSwordDownIdle.png','walk_down':'SkeletonWithSwordDownWalk.png',
+            'idle_left':'SkeletonWithSwordLefttIdle.png','walk_left':'SkeletonWithSwordLefttRun.png',
+            'idle_right':'SkeletonWithSwordRightIdle.png','walk_right':'SkeletonWithSwordRightRun.png',
+            'idle_up':'SkeletonWithSwordUpIdle.png','walk_up':'SkeletonWithSwordUpWalk.png'}
+          for dst,src in sk.items(): copy('skeleton',src,f'skeleton/{dst}.png')
+
+          cu={
+            'idle_down':'CultistDownIdle.png','walk_down':'CultistDownWalk.png',
+            'idle_left':'CultistLeftIdle.png','walk_left':'CultistLeftWalk.png',
+            'idle_right':'CultistRightIdle.png','walk_right':'CultistRightWalk.png',
+            'idle_up':'CultistUpIdle.png','walk_up':'CultistUpRun.png'}
+          for dst,src in cu.items(): copy('cultist',src,f'cultist/{dst}.png')
+
+          copy('ui','SimplePanel01.png','ui/panel.png')
+          copy('ui','GenericButton.png','ui/button.png')
+          copy('ui','GenericButtonActive.png','ui/button_active.png')
+          copy('ui','GenericButtonPressed.png','ui/button_pressed.png')
+          copy('ui','BossHealthBar.png','ui/boss_health.png')
+          copy('ui','HUDHealthBar.png','ui/hud_health.png')
+          copy('ui','Inventory.png','ui/inventory.png')
+          copy('ui','Warrior Icon.png','ui/key_icon.png')
+          copy('ui','Warrior Skill Icon 01.png','ui/skill_icon.png')
+          for i in range(1,13):
+              copy('ui',f'Main Menu animated background {i}.png',f'ui/title/{i:02d}.png')
+
+          copy('equipment','Common Arming Sword.png','equipment/arming_sword.png')
+          copy('equipment','Common Bearded Axe.png','equipment/bearded_axe.png')
+          copy('equipment','Common Greatsword.png','equipment/greatsword.png')
+          copy('equipment','Common Ragged shirt.png','equipment/ragged_shirt.png')
+          copy('equipment','Common ChainMail Chestpiece.png','equipment/chainmail.png')
+          copy('equipment','Rare Plate Chestpiece.png','equipment/plate.png')
+
+          avg=ImageStat.Stat(mock.resize((1,1))).mean[:3]
+          base=(max(30,int(avg[0]*.58)),max(27,int(avg[1]*.58)),max(25,int(avg[2]*.58)),255)
+          specs=[
+              ('prison',(1200,800),(42,35,31)),
+              ('infirmary',(1200,800),(34,40,35)),
+              ('temple',(1200,800),(44,34,31)),
+              ('heart',(1600,800),(45,27,30))]
+          for name,size,tint in specs:
+              img=Image.new('RGBA',size,base)
+              dr=ImageDraw.Draw(img)
+              sw,sh=64,48
+              for y in range(0,size[1],sh):
+                  row=y//sh
+                  off=-32 if row%2 else 0
+                  for x in range(off,size[0],sw):
+                      v=random.randint(-10,10)
+                      fill=tuple(max(18,min(90,int(base[i])+v)) for i in range(3))+(255,)
+                      dr.rectangle((x+2,y+2,x+sw-3,y+sh-3),fill=fill,outline=(20,17,16,125),width=2)
+                      if random.random()<.14:
+                          cx=x+random.randint(12,52); cy=y+random.randint(10,38)
+                          dr.line((cx,cy,cx+random.randint(-18,18),cy+random.randint(-15,15)),fill=(22,18,18,120),width=2)
+              img=Image.alpha_composite(img,Image.new('RGBA',size,tint+(42,)))
+              dr=ImageDraw.Draw(img)
+              if name in ('prison','temple','heart'):
+                  for _ in range(6 if name!='heart' else 10):
+                      cx=random.randint(90,size[0]-90); cy=random.randint(90,size[1]-90); rr=random.randint(10,34)
+                      dr.ellipse((cx-rr,cy-rr//2,cx+rr,cy+rr//2),fill=(70,9,13,random.randint(22,48)))
+              img.save(OUT/'rooms'/f'{name}.png')
+
+          tiles=Image.open(OUT/'dungeon/tileset.png').convert('RGBA')
+          tile=tiles.crop((0,0,32,32)).resize((48,48),Image.Resampling.NEAREST)
+          gate=Image.new('RGBA',(48,112),(0,0,0,0)); gate.alpha_composite(tile,(0,32))
+          gd=ImageDraw.Draw(gate)
+          for x in (7,19,31,41): gd.rectangle((x,5,x+4,108),fill=(49,43,38,255))
+          for y in (12,50,92): gd.rectangle((3,y,45,y+4),fill=(78,66,54,255))
+          gate.save(OUT/'dungeon/gate.png')
+          PY
+
+      - name: Install cinematic generated backgrounds
+        run: |
+          set -euxo pipefail
+          cat "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0a" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b1" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b2" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b3" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b4" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part1" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part2" > /tmp/cinematic_assets.b64
+          base64 -d /tmp/cinematic_assets.b64 > /tmp/cinematic_assets.zip
+          mkdir -p /tmp/cinematic_unpack /tmp/ForsakenFull/assets/cinematic /tmp/ForsakenFull/assets/lucifer/dungeon
+          unzip -q /tmp/cinematic_assets.zip -d /tmp/cinematic_unpack
+          cp /tmp/cinematic_unpack/title_bg.jpg /tmp/ForsakenFull/assets/cinematic/title_bg.jpg
+          cp /tmp/cinematic_unpack/chapter_temple_bg.jpg /tmp/ForsakenFull/assets/cinematic/chapter_temple_bg.jpg
+          cp /tmp/cinematic_unpack/ritual_bg.jpg /tmp/ForsakenFull/assets/cinematic/ritual_bg.jpg
+          cp /tmp/cinematic_unpack/boss_bg.jpg /tmp/ForsakenFull/assets/cinematic/boss_bg.jpg
+          cp /tmp/cinematic_unpack/inventory_bg.jpg /tmp/ForsakenFull/assets/cinematic/inventory_bg.jpg
+          cp /tmp/cinematic_unpack/wall_pattern.png /tmp/ForsakenFull/assets/lucifer/dungeon/wall_pattern.png
+          test -s /tmp/ForsakenFull/assets/cinematic/boss_bg.jpg
+          test -s /tmp/ForsakenFull/assets/lucifer/dungeon/wall_pattern.png
+
+      - name: Generate original ambient and SFX
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/ForsakenFull/assets/audio
+          python3 - <<'PY'
+          import wave, math, random, struct
+          from pathlib import Path
+          random.seed(4242)
+          out=Path('/tmp/ForsakenFull/assets/audio')
+          sr=22050
+          def save(name,samples):
+              with wave.open(str(out/name),'wb') as w:
+                  w.setnchannels(1);w.setsampwidth(2);w.setframerate(sr)
+                  data=bytearray()
+                  for x in samples:
+                      x=max(-1,min(1,x));data += struct.pack('<h',int(x*32767))
+                  w.writeframes(bytes(data))
+          dur=18;n=int(sr*dur);arr=[]
+          for i in range(n):
+              t=i/sr
+              s=.10*math.sin(2*math.pi*38*t)+.08*math.sin(2*math.pi*57*t+.7)+.025*(random.random()*2-1)
+              for cc in (4.1,9.3,14.7):
+                  dd=abs(t-cc)
+                  if dd<1.2:s+=.10*math.sin(2*math.pi*151*t)*math.exp(-dd*3)
+              arr.append(s)
+          save('ambient.wav',arr)
+          def fx(name,dur,freq,noise=.0,decay=8,vol=.55):
+              n=int(sr*dur);a=[]
+              for i in range(n):
+                  t=i/sr;e=math.exp(-decay*t)
+                  a.append((math.sin(2*math.pi*freq*t)+noise*(random.random()*2-1))*e*vol)
+              save(name,a)
+          fx('footstep.wav',.15,86,.35,22,.45)
+          fx('pickup.wav',.26,720,.03,7,.35)
+          fx('ui.wav',.14,520,.0,9,.28)
+          fx('hit.wav',.24,72,.48,11,.65)
+          fx('door.wav',.65,47,.34,3,.62)
+          fx('ritual.wav',1.20,117,.12,1.7,.48)
+          fx('battle_start.wav',.85,59,.22,2.2,.62)
+          PY
+
+      - name: Credits and commercial-use notes
+        run: |
+          cat > /tmp/ForsakenFull/ASSET_CREDITS.md <<'EOF'
+          # The Forsaken Depths — Asset Credits
+
+          ## Core
+          - Foozle/FoozleCC Lucifer packs — dungeon, warrior, cultist, skeleton, RPG UI, equipment. CC0 on original asset pages.
+
+          ## New monster integration
+          - Boss: Demon Slime — chierit — CC BY 4.0. https://chierit.itch.io/boss-demon-slime
+          - Flying Demon 2D Pixel Art — Mattz Art — usable in personal/commercial games; standalone redistribution prohibited. https://xzany.itch.io/flying-demon-2d-pixel-art
+          - Tiny RPG Character Asset Pack 01 V2.0 (free Soldier & Orc) — Zerie — personal/commercial game use permitted; redistribution prohibited. https://zerie.itch.io/tiny-rpg-character-asset-pack
+          - Free Animated Pixel Art Cave Monsters — AU_pixel — personal/commercial game use permitted; redistribution prohibited. https://au-pixel.itch.io/free-monster
+
+          ## Environment
+          - 2.5D FREE Tiles: Infernus Tileset — PVGames. PVGames terms permit commercial/non-commercial projects and editing; standalone resale prohibited. https://pvgames.itch.io/infernus-tileset
+
+          ## Audio
+          - FREE HORROR SFX — VN — SCARY SOUND EFFECTS — Liminal Games — CC0. https://liminal-space-dev.itch.io/free-horror-sfx-sounds
+
+          ## Commercial release note
+          The free ToffeeCraft UIBundleFree atlas supplied by the user is NOT included in this build because its current free-license wording says "For personal use". The game keeps the original/CC0 UI until a commercial UI license is confirmed.
+          EOF
+          cp /tmp/ForsakenFull/ASSET_CREDITS.md /tmp/ForsakenFull/CREDITS.txt
+
+      - name: Download Godot 4.7.2
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' | head -1)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Validate project in Godot
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenFull --quit-after 5 2>&1 | tee /tmp/editor.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/editor.log; then exit 1; fi
+          "$GODOT_BIN" --headless --path /tmp/ForsakenFull --quit-after 5 2>&1 | tee /tmp/game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/game.log; then exit 1; fi
+
+      - name: Install Windows export templates
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz -o /tmp/templates.tpz
+          rm -rf /tmp/templates
+          mkdir -p /tmp/templates
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Export standalone Windows game
+        run: |
+          set -euxo pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenFull --export-release "Windows Desktop" /tmp/windows/TheForsakenDepths.exe
+          test -s /tmp/windows/TheForsakenDepths.exe
+          cat > /tmp/windows/README_TH.txt <<'EOF'
+          THE FORSAKEN DEPTHS — FULL ASSET FIX
+          เปิด TheForsakenDepths.exe เพื่อเล่นเวอร์ชัน Full Asset Fix แบบหน้าต่างเกมจริง
+          F11 = สลับ Fullscreen / Windowed
+          WASD เดิน | Shift วิ่ง | E สำรวจ/คุย | I Inventory | Q Journal | T Torch
+          EOF
+
+      - name: Package project and Windows build
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenFull/.godot
+          cd /tmp
+          zip -qr /tmp/release/TheForsakenDepths_FULL_ASSET_FIX_PROJECT.zip ForsakenFull
+          cd /tmp/windows
+          zip -qr /tmp/release/TheForsakenDepths_FULL_ASSET_FIX_WINDOWS.zip .
+          test -s /tmp/release/TheForsakenDepths_FULL_ASSET_FIX_PROJECT.zip
+          test -s /tmp/release/TheForsakenDepths_FULL_ASSET_FIX_WINDOWS.zip
+          ls -lh /tmp/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_FULL_ASSET_FIX
+          path: /tmp/release/*
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish permanent download branch
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          cd /tmp
+          rm -rf publish-repo
+          git clone "https://x-access-token:$GITHUB_TOKEN@github.com/Worawit0/space-dodge-game01.git" publish-repo
+          cd publish-repo
+          git checkout --orphan forsaken-fullasset-release
+          git rm -rf . || true
+          cp /tmp/release/*.zip .
+          cat > README.md <<'EOF'
+          # The Forsaken Depths — Full Asset Fix
+          - TheForsakenDepths_FULL_ASSET_FIX_WINDOWS.zip: Windows build (recommended).
+          - TheForsakenDepths_FULL_ASSET_FIX_PROJECT.zip: Godot source project with integrated monster, prop and horror-audio assets.
+          EOF
+          git add .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish Forsaken Depths Full Asset Fix"
+          git push --force origin forsaken-fullasset-release
