@@ -157,7 +157,13 @@ jobs:
       - name: Install cinematic generated backgrounds
         run: |
           set -euxo pipefail
-          cat "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0"               "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part1"               "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part2" > /tmp/cinematic_assets.b64
+          cat "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0a" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b1" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b2" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b3" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part0b4" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part1" \
+              "$GITHUB_WORKSPACE/.github/assets/cinematic_assets.b64.part2" > /tmp/cinematic_assets.b64
           base64 -d /tmp/cinematic_assets.b64 > /tmp/cinematic_assets.zip
           mkdir -p /tmp/cinematic_unpack /tmp/ForsakenCinematic/assets/cinematic /tmp/ForsakenCinematic/assets/lucifer/dungeon
           unzip -q /tmp/cinematic_assets.zip -d /tmp/cinematic_unpack
