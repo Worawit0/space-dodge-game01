@@ -459,8 +459,7 @@ replace(
 	_play_sfx("battle_start")''',
 '''func _start_battle(e:Dictionary):
 	enemy_battle_lock=true
-	_play_sfx("monster_growl")
-	_play_sfx("battle_start")''',
+	_play_sfx("monster_growl")''',
 "battle growl"
 )
 
