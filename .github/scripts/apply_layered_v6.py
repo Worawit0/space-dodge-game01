@@ -663,7 +663,7 @@ r'''func _button(text:String)->Button:
 )
 
 sub(
-r'func _update_hud\(\):.*?(?=\n\nfunc _[a-zA-Z_])',
+r'func _update_hud\(\):.*?(?=\nfunc |\Z)',
 r'''func _update_hud():
 	if not hud_location:
 		return
