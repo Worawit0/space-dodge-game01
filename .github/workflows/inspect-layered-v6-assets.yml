@@ -1,0 +1,39 @@
+name: Inspect New Forsaken Assets
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-layered-v6-20260920
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download asset packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          mkdir -p /tmp/packs /tmp/ext
+          dl () {
+            key="$1"; url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            z=$(find "/tmp/packs/$key" -type f \( -name '*.zip' -o -name '*.rar' \) | head -1)
+            echo "$key archive=$z"
+            if [[ "$z" == *.zip ]]; then unzip -q "$z" -d "/tmp/ext/$key"; else 7z x -y "$z" -o"/tmp/ext/$key" >/dev/null; fi
+          }
+          dl darkui https://hypnobius.itch.io/dark-ages-ui
+          dl dungeon https://pixel-poem.itch.io/dungeon-assetpuck
+          dl pixellands https://trislin.itch.io/pixel-lands-dungeons
+          dl demons https://zerie.itch.io/tiny-rpg-character-asset-pack-02
+          dl door https://jitsukoan.itch.io/demon-door
+          dl cave https://maaot.itch.io/2d-browncave-assets
+      - name: Print manifests
+        run: |
+          set -euxo pipefail
+          for d in darkui dungeon pixellands demons door cave; do
+            echo "===== $d ====="
+            find "/tmp/ext/$d" -type f | sed "s#/tmp/ext/$d/##" | sort | head -300
+          done
