@@ -478,7 +478,19 @@ func _load_audio_any(name:String)->AudioStream:
 	for ext in [".mp3",".ogg",".wav"]:
 		var path="res://assets/audio/"+name+ext
 		if ResourceLoader.exists(path):
-			return load(path) as AudioStream
+			var imported = load(path) as AudioStream
+			if imported:
+				return imported
+		var absolute_path = ProjectSettings.globalize_path(path)
+		if FileAccess.file_exists(absolute_path):
+			if ext==".mp3":
+				var mp3 = AudioStreamMP3.load_from_file(absolute_path)
+				if mp3:
+					return mp3
+			elif ext==".ogg":
+				var ogg = AudioStreamOggVorbis.load_from_file(absolute_path)
+				if ogg:
+					return ogg
 	return null
 
 func _play_sfx(name:String):
