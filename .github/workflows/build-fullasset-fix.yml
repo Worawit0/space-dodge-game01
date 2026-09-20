@@ -413,6 +413,95 @@ jobs:
           "$GODOT_BIN" --headless --path /tmp/ForsakenFull --quit-after 5 2>&1 | tee /tmp/game.log
           if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/game.log; then exit 1; fi
 
+      - name: Runtime QA equip gate enemies and audio
+        run: |
+          set -euxo pipefail
+          cat > /tmp/ForsakenFull/qa_runtime.gd <<'GDSCRIPT'
+          extends SceneTree
+
+          func require_ok(ok: bool, message: String) -> bool:
+              if not ok:
+                  push_error("QA FAIL: " + message)
+                  return false
+              return true
+
+          func _initialize():
+              call_deferred("_run")
+
+          func _run():
+              var packed = load("res://main.tscn")
+              if not require_ok(packed != null, "main.tscn did not load"):
+                  quit(1)
+                  return
+              var game = packed.instantiate()
+              root.add_child(game)
+              await process_frame
+              await process_frame
+
+              # EQUIP: the selected item must alter the same combat stat the battle code uses.
+              game.weapons = ["Rusted Sword", "Bearded Axe", "Greatsword"]
+              game.inventory_current_tab = "Weapon"
+              game.inventory_selected = "Bearded Axe"
+              game._inventory_use_selected()
+              if not require_ok(game.equipped_weapon == "Bearded Axe", "Bearded Axe was not equipped"):
+                  quit(1); return
+              if not require_ok(game._weapon_bonus() == 7, "Bearded Axe attack bonus is not +7"):
+                  quit(1); return
+              game.inventory_selected = "Greatsword"
+              game._inventory_use_selected()
+              if not require_ok(game.equipped_weapon == "Greatsword" and game._weapon_bonus() == 10, "Greatsword equip/combat bonus mismatch"):
+                  quit(1); return
+
+              game.armor = ["Ragged Shirt", "Chainmail Chestpiece"]
+              game.inventory_current_tab = "Armor"
+              game.inventory_selected = "Chainmail Chestpiece"
+              game._inventory_use_selected()
+              if not require_ok(game.equipped_armor == "Chainmail Chestpiece" and game._armor_defense() == 3, "Armor equip/defense mismatch"):
+                  quit(1); return
+
+              # GATE: unlocking must disable the physical collider, not only hide the artwork.
+              var gate: Dictionary = game.world_nodes["prison_gate"]
+              game.flags["rust_key"] = true
+              game._open_gate(gate)
+              if not require_ok(not bool(gate["active"]), "Prison gate remained active after unlock"):
+                  quit(1); return
+              var collider = gate["collider"] as StaticBody2D
+              if not require_ok(collider != null and collider.collision_layer == 0 and collider.collision_mask == 0, "Gate collision remained enabled after opening"):
+                  quit(1); return
+
+              # NEW MONSTERS: normalized animation frames must load into the live scene.
+              for enemy_id in ["maw_prison", "husk_infirmary", "cultist_temple", "bell_warden"]:
+                  var enemy: Dictionary = game.world_nodes[enemy_id]
+                  var sprite = enemy["sprite"] as AnimatedSprite2D
+                  if not require_ok(sprite != null, enemy_id + " has no AnimatedSprite2D"):
+                      quit(1); return
+                  if not require_ok(sprite.sprite_frames.get_frame_count("idle_down") > 0, enemy_id + " idle frames missing"):
+                      quit(1); return
+                  if not require_ok(sprite.sprite_frames.get_frame_count("walk_down") > 0, enemy_id + " walk frames missing"):
+                      quit(1); return
+
+              for asset_path in [
+                  "res://assets/full/enemies/orc/idle_00.png",
+                  "res://assets/full/enemies/flying_demon/idle_00.png",
+                  "res://assets/full/enemies/demon_slime/idle_00.png",
+                  "res://assets/full/props/cage.png",
+                  "res://assets/audio/ambient.mp3",
+                  "res://assets/audio/door.mp3",
+                  "res://assets/audio/monster_growl.mp3"
+              ]:
+                  if not require_ok(ResourceLoader.exists(asset_path), "Missing resource " + asset_path):
+                      quit(1); return
+
+              print("QA PASS: equip, combat stats, gate collision, enemy animations and horror audio")
+              game.queue_free()
+              await process_frame
+              quit(0)
+          GDSCRIPT
+          "$GODOT_BIN" --headless --path /tmp/ForsakenFull --script res://qa_runtime.gd 2>&1 | tee /tmp/qa.log
+          grep -q "QA PASS:" /tmp/qa.log
+          if grep -E "QA FAIL|SCRIPT ERROR|Parse Error|Invalid call|Invalid get index" /tmp/qa.log; then exit 1; fi
+          rm -f /tmp/ForsakenFull/qa_runtime.gd
+
       - name: Install Windows export templates
         run: |
           set -euxo pipefail
@@ -453,26 +542,3 @@ jobs:
           path: /tmp/release/*
           compression-level: 0
           if-no-files-found: error
-
-      - name: Publish permanent download branch
-        env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          cd /tmp
-          rm -rf publish-repo
-          git clone "https://x-access-token:$GITHUB_TOKEN@github.com/Worawit0/space-dodge-game01.git" publish-repo
-          cd publish-repo
-          git checkout --orphan forsaken-fullasset-release
-          git rm -rf . || true
-          cp /tmp/release/*.zip .
-          cat > README.md <<'EOF'
-          # The Forsaken Depths — Full Asset Fix
-          - TheForsakenDepths_FULL_ASSET_FIX_WINDOWS.zip: Windows build (recommended).
-          - TheForsakenDepths_FULL_ASSET_FIX_PROJECT.zip: Godot source project with integrated monster, prop and horror-audio assets.
-          EOF
-          git add .
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Publish Forsaken Depths Full Asset Fix"
-          git push --force origin forsaken-fullasset-release
