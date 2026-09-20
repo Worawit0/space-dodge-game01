@@ -1,0 +1,60 @@
+name: Inspect Uploaded Asset Equivalents
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-fullassetfix-20260920
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-fullassetfix-20260920
+      - name: Download free packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+          rm -rf /tmp/assets && mkdir -p /tmp/assets
+          dl () {
+            key="$1"; url="$2"
+            mkdir -p "/tmp/assets/$key/raw" "/tmp/assets/$key/ext"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/assets/$key/raw"
+            z=$(find "/tmp/assets/$key/raw" -type f -name '*.zip' | head -1)
+            echo "ZIP[$key]=$z"
+            unzip -q "$z" -d "/tmp/assets/$key/ext"
+          }
+          dl ui https://toffeecraft.itch.io/ui-user-interface-mega-pack
+          dl cave https://au-pixel.itch.io/free-monster
+          dl tiny https://zerie.itch.io/tiny-rpg-character-asset-pack
+          dl infernus https://pvgames.itch.io/infernus-tileset
+          dl boss https://chierit.itch.io/boss-demon-slime
+          dl demon https://xzany.itch.io/flying-demon-2d-pixel-art
+          dl samurai https://xzany.itch.io/samurai-2d-pixel-art
+          dl sfx https://liminal-space-dev.itch.io/free-horror-sfx-sounds
+
+      - name: List files and image dimensions
+        run: |
+          python3 -m pip install pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root=Path('/tmp/assets')
+          for pack in sorted(p.name for p in root.iterdir() if p.is_dir()):
+              print("\n==========",pack,"==========")
+              files=[p for p in (root/pack/'ext').rglob('*') if p.is_file()]
+              for p in files[:240]:
+                  rel=p.relative_to(root/pack/'ext')
+                  ext=p.suffix.lower()
+                  if ext in {'.png','.jpg','.jpeg','.webp'}:
+                      try:
+                          im=Image.open(p)
+                          print(f"IMG {rel} :: {im.size[0]}x{im.size[1]} mode={im.mode}")
+                      except Exception as e:
+                          print("BADIMG",rel,e)
+                  elif ext in {'.wav','.ogg','.mp3','.txt','.md','.ase','.aseprite'}:
+                      print(f"FILE {rel} :: {p.stat().st_size}")
+              print("TOTAL",len(files))
+          PY
