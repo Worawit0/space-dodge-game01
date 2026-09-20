@@ -480,26 +480,31 @@ jobs:
                   if not require_ok(sprite.sprite_frames.get_frame_count("walk_down") > 0, enemy_id + " walk frames missing"):
                       quit(1); return
 
-              for asset_path in [
+              for texture_path in [
+                  "res://assets/lucifer/player/idle_down.png",
                   "res://assets/full/enemies/orc/idle_00.png",
                   "res://assets/full/enemies/flying_demon/idle_00.png",
                   "res://assets/full/enemies/demon_slime/idle_00.png",
-                  "res://assets/full/props/cage.png",
-                  "res://assets/audio/ambient.mp3",
-                  "res://assets/audio/door.mp3",
-                  "res://assets/audio/monster_growl.mp3"
+                  "res://assets/full/props/cage.png"
               ]:
-                  if not require_ok(ResourceLoader.exists(asset_path), "Missing resource " + asset_path):
+                  if not require_ok(game._load_tex(texture_path) != null, "Missing texture " + texture_path):
                       quit(1); return
 
-              print("QA PASS: equip, combat stats, gate collision, enemy animations and horror audio")
+              for sound_name in ["ambient", "door", "monster_growl"]:
+                  if not require_ok(game._load_audio_any(sound_name) != null, "Missing audio " + sound_name):
+                      quit(1); return
+
+              if not require_ok(game.player_anim.sprite_frames.get_frame_count("idle_down") > 0, "Player idle animation is empty"):
+                  quit(1); return
+
+              print("QA PASS: player animation, equip, combat stats, gate collision, enemy animations and horror audio")
               game.queue_free()
               await process_frame
               quit(0)
           GDSCRIPT
           "$GODOT_BIN" --headless --path /tmp/ForsakenFull --script res://qa_runtime.gd 2>&1 | tee /tmp/qa.log
           grep -q "QA PASS:" /tmp/qa.log
-          if grep -E "QA FAIL|SCRIPT ERROR|Parse Error|Invalid call|Invalid get index" /tmp/qa.log; then exit 1; fi
+          if grep -E "QA FAIL|SCRIPT ERROR|Parse Error|Invalid call|Invalid get index|ERROR:" /tmp/qa.log; then exit 1; fi
           rm -f /tmp/ForsakenFull/qa_runtime.gd
 
       - name: Install Windows export templates
