@@ -20,9 +20,14 @@ jobs:
             key="$1"; url="$2"
             mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
             itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
-            z=$(find "/tmp/packs/$key" -type f \( -name '*.zip' -o -name '*.rar' \) | head -1)
+            z=$(find "/tmp/packs/$key" -type f ! -name '*metadata.json' | head -1)
             echo "$key archive=$z"
-            if [[ "$z" == *.zip ]]; then unzip -q "$z" -d "/tmp/ext/$key"; else 7z x -y "$z" -o"/tmp/ext/$key" >/dev/null; fi
+            file "$z"
+            if file "$z" | grep -qi 'Zip archive'; then
+              unzip -q "$z" -d "/tmp/ext/$key"
+            else
+              7z x -y "$z" -o"/tmp/ext/$key" >/dev/null
+            fi
           }
           dl darkui https://hypnobius.itch.io/dark-ages-ui
           dl dungeon https://pixel-poem.itch.io/dungeon-assetpuck
