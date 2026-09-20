@@ -42,3 +42,21 @@ jobs:
             echo "===== $d ====="
             find "/tmp/ext/$d" -type f | sed "s#/tmp/ext/$d/##" | sort | head -300
           done
+
+      - name: Print image dimensions
+        run: |
+          python3 -m pip install pillow >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          roots=Path('/tmp/ext')
+          wanted=['32x32-Tilesheet.png','Dungeon_Tileset.png','dungeons_demo.png','dungeons_demo_animated.png','Demon_A_Idle.png','Blood Monster_A_Idle.png','!Demon Door.png','Cave - BigRocks1.png','Cave - Floor.png']
+          for name in wanted:
+              hits=list(roots.rglob(name))
+              for p in hits:
+                  try:
+                      im=Image.open(p)
+                      print(name, im.size, 'path=', p)
+                  except Exception as e:
+                      print('ERR',p,e)
+          PY
