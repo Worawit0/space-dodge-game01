@@ -1,0 +1,307 @@
+name: Build Forsaken Depths Full Visual V8
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-v8-fullvisual-20260921
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-v8-fullvisual-20260921
+
+      - name: Prepare Structured V8 project
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenV8 /tmp/packs /tmp/ext /tmp/windows /tmp/release
+          cp -a forsaken_v7 /tmp/ForsakenV8
+          mkdir -p /tmp/packs /tmp/ext /tmp/windows /tmp/release
+          test -f /tmp/ForsakenV8/scenes/world/game_world.tscn
+          test -f /tmp/ForsakenV8/scripts/actors/player.gd
+
+      - name: Download commercial-compatible visual packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+
+          dl () {
+            key="$1"
+            url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            archive=$(find "/tmp/packs/$key" -type f ! -name '*metadata.json' | head -1)
+            test -n "$archive"
+            echo "$key -> $archive"
+            if file "$archive" | grep -qi 'Zip archive'; then
+              unzip -q "$archive" -d "/tmp/ext/$key"
+            else
+              7z x -y "$archive" -o"/tmp/ext/$key" >/dev/null
+            fi
+          }
+
+          dl warrior https://foozlecc.itch.io/lucifer-warrior
+          dl cultist https://foozlecc.itch.io/lucifer-cultist-enemy
+          dl equipment https://foozlecc.itch.io/lucifer-equipment
+          dl dungeon https://pixel-poem.itch.io/dungeon-assetpuck
+          dl darkui https://hypnobius.itch.io/dark-ages-ui
+          dl door https://jitsukoan.itch.io/demon-door
+          dl demons https://zerie.itch.io/tiny-rpg-character-asset-pack-02
+          dl flying https://xzany.itch.io/flying-demon-2d-pixel-art
+          dl boss https://chierit.itch.io/boss-demon-slime
+          dl infernus https://pvgames.itch.io/infernus-tileset
+
+          mkdir -p /tmp/packs/horrorsfx /tmp/ext/horrorsfx
+          itchio-downloader --url https://liminal-space-dev.itch.io/free-horror-sfx-sounds --downloadDirectory /tmp/packs/horrorsfx
+          hzip=$(find /tmp/packs/horrorsfx -type f -name 'horror_sfx_vol_1.zip' | head -1)
+          if [ -z "$hzip" ]; then hzip=$(find /tmp/packs/horrorsfx -type f -name '*.zip' | head -1); fi
+          test -n "$hzip"
+          unzip -q "$hzip" -d /tmp/ext/horrorsfx
+
+      - name: Normalize sprites tiles UI doors props and audio
+        env:
+          GAME_ROOT: /tmp/ForsakenV8
+        run: |
+          set -euxo pipefail
+          python3 -m pip install pillow
+          python3 "$GITHUB_WORKSPACE/.github/scripts/build_v8_assets.py" | tee /tmp/assets.log
+          grep -q "V8_ASSET_BUILD_OK" /tmp/assets.log
+
+      - name: Write asset credits and license notes
+        run: |
+          cat > /tmp/ForsakenV8/ASSET_CREDITS.md <<'EOF'
+          # The Forsaken Depths — Full Visual V8 Asset Credits
+
+          - Dark Ages UI — Hypnobius. Commercial and personal use allowed; modification allowed; redistribution as an asset pack prohibited.
+            https://hypnobius.itch.io/dark-ages-ui
+          - 2D Pixel Dungeon Asset Pack — Pixel_Poem. Free/commercial project use and modification allowed; redistribution/resale prohibited.
+            https://pixel-poem.itch.io/dungeon-assetpuck
+          - Demon Door — Jitsu Koan / credit TheRealFusion. Free to use/edit; commercial allowed.
+            https://jitsukoan.itch.io/demon-door
+          - Tiny RPG Character Asset Pack 02 — Zerie. Personal/commercial game use and modification allowed; redistribution prohibited.
+            https://zerie.itch.io/tiny-rpg-character-asset-pack-02
+          - Flying Demon 2D Pixel Art — Mattz Art. Personal/commercial game use allowed; standalone redistribution prohibited.
+            https://xzany.itch.io/flying-demon-2d-pixel-art
+          - Boss: Demon Slime — chierit. CC BY 4.0; attribution required.
+            https://chierit.itch.io/boss-demon-slime
+          - Lucifer Warrior / Cultist / Equipment packs — Foozle/FoozleCC, used as the core pixel character/equipment source.
+            https://foozlecc.itch.io/
+          - Infernus Tileset — PVGames, used for selected environmental props under the pack's project-use terms.
+            https://pvgames.itch.io/infernus-tileset
+          - FREE HORROR SFX — Liminal Games, used for ambient wind, footsteps, door and monster growl.
+            https://liminal-space-dev.itch.io/free-horror-sfx-sounds
+
+          Original integration code, map layout, generated ritual/light textures, supporting UI composition,
+          progression logic, save/load systems and synthesized utility sound effects are part of this project.
+
+          Before publishing a commercial Steam build, keep this file with the project and re-check the original
+          asset pages in case a creator has changed distribution terms.
+          EOF
+
+      - name: Download Godot 4.7.2 stable
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip \
+            -o /tmp/godot.zip
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' | head -1)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Import and parse V8 project
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenV8 --quit-after 5 2>&1 | tee /tmp/import.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/import.log; then
+            exit 1
+          fi
+
+      - name: Runtime QA full visual integration
+        run: |
+          set -euxo pipefail
+          cat > /tmp/ForsakenV8/tests/runtime_v8_qa.gd <<'GDSCRIPT'
+          extends SceneTree
+
+          var failed := false
+
+          func ok(cond: bool, msg: String) -> void:
+              if cond:
+                  print("PASS: ", msg)
+              else:
+                  push_error("V8 QA FAIL: " + msg)
+                  failed = true
+
+          func _init() -> void:
+              call_deferred("_run")
+
+          func _run() -> void:
+              await process_frame
+
+              for p in [
+                  "res://assets/v8/player/idle_down_00.png",
+                  "res://assets/v8/player/walk_right_00.png",
+                  "res://assets/v8/enemies/demon_a/idle_00.png",
+                  "res://assets/v8/enemies/blood_monster/walk_00.png",
+                  "res://assets/v8/enemies/flying_demon/attack_00.png",
+                  "res://assets/v8/enemies/demon_slime/death_00.png",
+                  "res://assets/v8/dungeon/floor_tile.png",
+                  "res://assets/v8/dungeon/wall_tile.png",
+                  "res://assets/v8/gates/prison_00.png",
+                  "res://assets/v8/gates/prison_09.png",
+                  "res://assets/v8/ui/panel_frame.png",
+                  "res://assets/v8/ui/title_bg.png",
+                  "res://assets/v8/items/bearded_axe.png",
+                  "res://assets/v8/fx/light.png"
+              ]:
+                  ok(ResourceLoader.exists(p), "asset exists " + p)
+                  ok(load(p) != null, "asset loads " + p)
+
+              var gs = root.get_node_or_null("GameState")
+              ok(gs != null, "GameState autoload")
+              if gs == null:
+                  quit(1)
+                  return
+              gs.reset_new_game()
+              gs.add_weapon("Bearded Axe")
+              ok(gs.equip_weapon("Bearded Axe"), "equip Bearded Axe")
+              ok(gs.attack_power() == 7, "Bearded Axe affects combat ATK")
+              gs.add_armor("Chainmail")
+              ok(gs.equip_armor("Chainmail"), "equip Chainmail")
+              ok(gs.armor_defense() == 3, "Chainmail affects DEF")
+
+              var world = load("res://scenes/world/game_world.tscn").instantiate()
+              root.add_child(world)
+              await process_frame
+              await process_frame
+
+              ok(world.get_node_or_null("Layer_floor") != null, "floor visual layer")
+              ok(world.get_node_or_null("Layer_back") != null, "back wall visual layer")
+              ok(world.get_node_or_null("Layer_Actors") != null, "actors visual layer")
+              ok(world.get_node_or_null("Layer_foreground") != null, "foreground visual layer")
+              ok(world.get_node_or_null("CollisionLayer") != null, "collision layer")
+              ok(world.player != null, "player spawned")
+              ok(world.player.sprite is AnimatedSprite2D, "player is AnimatedSprite2D")
+              ok(world.player.sprite.sprite_frames.get_frame_count("idle_down") > 0, "player idle animation")
+              ok(world.player.sprite.sprite_frames.get_frame_count("walk_right") > 0, "player walk animation")
+
+              var enemies = get_nodes_in_group("enemy")
+              ok(enemies.size() >= 4, "normal enemies plus boss spawned")
+              for e in enemies:
+                  ok(e.sprite is AnimatedSprite2D, e.enemy_name + " uses AnimatedSprite2D")
+                  ok(e.sprite.sprite_frames.get_frame_count("idle") > 0, e.enemy_name + " idle frames")
+                  ok(e.sprite.sprite_frames.get_frame_count("walk") > 0, e.enemy_name + " walk frames")
+
+              var doors = get_nodes_in_group("interactable")
+              var door_count := 0
+              for n in doors:
+                  if n.has_method("_force_open") and n.get("sprite") is AnimatedSprite2D:
+                      door_count += 1
+                      ok(n.sprite.sprite_frames.get_frame_count("opening") >= 10, n.door_name + " has opening animation")
+              ok(door_count >= 3, "three progression doors present")
+
+              # Verify a locked gate cannot open, then does open with the key.
+              var test_gate = null
+              for n in doors:
+                  if n.get("door_name") == "Prison Iron Gate":
+                      test_gate = n
+                      break
+              ok(test_gate != null, "Prison Iron Gate found")
+              if test_gate:
+                  test_gate.interact(world.player)
+                  ok(not test_gate.opening and not test_gate.is_open, "gate remains locked without key")
+                  gs.add_key_item("Rust Key")
+                  test_gate.interact(world.player)
+                  ok(test_gate.opening, "gate starts animated opening with key")
+
+              world._toggle_inventory()
+              await process_frame
+              ok(world.inventory.is_open(), "inventory opens")
+              ok(world.inventory.preview != null, "inventory item preview exists")
+              world.inventory.close()
+
+              # Battle must display the same real enemy SpriteFrames, not a placeholder.
+              var first_enemy = enemies[0] if not enemies.is_empty() else null
+              if first_enemy:
+                  world._start_battle(first_enemy)
+                  await process_frame
+                  ok(world.battle.is_open(), "battle opens")
+                  ok(world.battle.battle_sprite.sprite_frames.get_frame_count("idle") > 0, "battle shows actual enemy animation")
+                  world.battle.root.visible = false
+                  world.battle_active = false
+
+              # Death signal still drives the dedicated game-over flow.
+              gs.damage(9999.0, "V8 QA death")
+              ok(gs.body <= 0.0, "fatal damage reaches zero BODY")
+
+              world.queue_free()
+              await process_frame
+              if failed:
+                  push_error("V8_FULL_VISUAL_QA_FAILED")
+                  quit(1)
+              else:
+                  print("V8_FULL_VISUAL_QA_PASS")
+                  quit(0)
+          GDSCRIPT
+
+          "$GODOT_BIN" --headless --path /tmp/ForsakenV8 -s res://tests/runtime_v8_qa.gd 2>&1 | tee /tmp/qa.log
+          grep -q "V8_FULL_VISUAL_QA_PASS" /tmp/qa.log
+          if grep -E "V8 QA FAIL|V8_FULL_VISUAL_QA_FAILED|SCRIPT ERROR|Parse Error|Invalid call|Invalid get index" /tmp/qa.log; then
+            exit 1
+          fi
+          rm -f /tmp/ForsakenV8/tests/runtime_v8_qa.gd
+
+      - name: Smoke launch main scene
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenV8 --quit-after 4 2>&1 | tee /tmp/game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid get index|ERROR: Cannot open file" /tmp/game.log; then
+            exit 1
+          fi
+
+      - name: Install Windows export templates
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz \
+            -o /tmp/templates.tpz
+          rm -rf /tmp/templates
+          mkdir -p /tmp/templates
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Export Windows build
+        run: |
+          set -euxo pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenV8 \
+            --export-release "Windows Desktop" /tmp/windows/TheForsakenDepths_V8.exe
+          test -s /tmp/windows/TheForsakenDepths_V8.exe
+          cp /tmp/ForsakenV8/ASSET_CREDITS.md /tmp/windows/ASSET_CREDITS.md
+          cp /tmp/ForsakenV8/README_TH.md /tmp/windows/README_TH.md
+
+      - name: Package project and Windows build
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenV8/.godot
+          cd /tmp
+          zip -qr /tmp/release/TheForsakenDepths_FULL_VISUAL_V8_PROJECT.zip ForsakenV8
+          cd /tmp/windows
+          zip -qr /tmp/release/TheForsakenDepths_FULL_VISUAL_V8_WINDOWS.zip .
+          test -s /tmp/release/TheForsakenDepths_FULL_VISUAL_V8_PROJECT.zip
+          test -s /tmp/release/TheForsakenDepths_FULL_VISUAL_V8_WINDOWS.zip
+          ls -lh /tmp/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_FULL_VISUAL_V8
+          path: /tmp/release/*
+          compression-level: 0
+          if-no-files-found: error
