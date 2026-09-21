@@ -25,6 +25,7 @@ var objective_cache := ""
 var position_accum := 0.0
 
 func _ready() -> void:
+	_build_lighting()
 	_build_layers()
 	_build_collision_world()
 	_spawn_player()
@@ -35,7 +36,12 @@ func _ready() -> void:
 	GameState.inventory_changed.connect(_update_objective)
 	AudioManager.play_ambient()
 	_update_objective()
-	GameState.message_requested.emit("The descent begins. Find the Rust Key in the Old Prison.")
+	GameState.message_requested.emit("The descent begins. Find the Rust Key in the western prison cells.")
+
+func _build_lighting() -> void:
+	var modulate := CanvasModulate.new()
+	modulate.color = Color(0.46,0.40,0.43,1.0)
+	add_child(modulate)
 
 func _build_layers() -> void:
 	for info in [
@@ -61,13 +67,23 @@ func _build_collision_world() -> void:
 	_add_wall(collision_root, Vector2(1200,1155), Vector2(2400,90))
 	_add_wall(collision_root, Vector2(45,600), Vector2(90,1200))
 	_add_wall(collision_root, Vector2(2355,600), Vector2(90,1200))
+
+	# Prison -> Infirmary wall with a 200px doorway.
 	_add_wall(collision_root, Vector2(800,295), Vector2(40,410))
 	_add_wall(collision_root, Vector2(800,905), Vector2(40,410))
+
+	# Infirmary -> Temple.
 	_add_wall(collision_root, Vector2(1600,295), Vector2(40,410))
 	_add_wall(collision_root, Vector2(1600,905), Vector2(40,410))
+
+	# Temple -> Heart chamber, opened only after the ritual.
+	_add_wall(collision_root, Vector2(2040,295), Vector2(40,410))
+	_add_wall(collision_root, Vector2(2040,905), Vector2(40,410))
+
+	# Internal room architecture.
 	_add_wall(collision_root, Vector2(440,315), Vector2(260,70))
 	_add_wall(collision_root, Vector2(1205,870), Vector2(330,70))
-	_add_wall(collision_root, Vector2(1915,272), Vector2(270,65))
+	_add_wall(collision_root, Vector2(1815,272), Vector2(230,65))
 
 func _add_wall(parent: Node, pos: Vector2, size: Vector2) -> void:
 	var body := StaticBody2D.new()
@@ -86,37 +102,54 @@ func _spawn_player() -> void:
 	actors.add_child(player)
 	player.global_position = GameState.player_position
 	player.inventory_requested.connect(_toggle_inventory)
-	player.attack_requested.connect(func(): GameState.message_requested.emit("Enemies are fought when they catch you. Choose body parts in battle."))
+	player.attack_requested.connect(func(): GameState.message_requested.emit("Enemies trigger turn-based combat on contact. Choose a limb target in battle."))
 
 func _spawn_interactables() -> void:
-	_spawn_door(Vector2(800,600), "Prison Iron Gate", "Rust Key", "infirmary_open")
-	_spawn_door(Vector2(1600,600), "Temple Bell Gate", "Bell Sigil", "temple_open")
+	_spawn_door(Vector2(800,600), "Prison Iron Gate", "Rust Key", "infirmary_open", "", "prison")
+	_spawn_door(Vector2(1600,600), "Temple Bell Gate", "Bell Sigil", "temple_open", "", "temple")
+	_spawn_door(Vector2(2040,600), "Heart Gate", "", "heart_open", "ritual_done", "heart")
 
 	_spawn_pickup(Vector2(610,230), "Rust Key", "key")
 	_spawn_pickup(Vector2(520,900), "Bearded Axe", "weapon")
 	_spawn_pickup(Vector2(1300,945), "Chainmail", "armor")
 	_spawn_pickup(Vector2(1435,280), "Bell Sigil", "key")
-	_spawn_pickup(Vector2(1860,955), "Greatsword", "weapon")
+	_spawn_pickup(Vector2(1880,955), "Greatsword", "weapon")
 	_spawn_pickup(Vector2(990,310), "Ration", "item")
 
 	var maren = NPC_SCENE.instantiate()
 	maren.position = Vector2(1110,380)
+	maren.npc_name = "Maren"
+	maren.flag_name = "met_maren"
+	maren.asset_set = "maren"
+	maren.first_text = "The prison is only the mouth of this place. The Bell Sigil is hidden beyond the shrine. Take this bandage."
+	maren.repeat_text = "Do not trust the sound of the bell. It calls with voices you remember."
 	actors.add_child(maren)
+
+	var sever = NPC_SCENE.instantiate()
+	sever.position = Vector2(1775,760)
+	sever.npc_name = "Priest Sever"
+	sever.flag_name = "met_sever"
+	sever.asset_set = "sever"
+	sever.first_text = "The Heart Gate will not answer a key. Break the ritual seal and it will open."
+	sever.repeat_text = "The Warden is not a king. It is a lock."
+	actors.add_child(sever)
 
 	var shrine = SHRINE_SCENE.instantiate()
 	shrine.position = Vector2(1190,720)
 	actors.add_child(shrine)
 
 	var ritual = RITUAL_SCENE.instantiate()
-	ritual.position = Vector2(1920,650)
+	ritual.position = Vector2(1870,610)
 	actors.add_child(ritual)
 
-func _spawn_door(pos: Vector2, title: String, key: String, flag: String) -> void:
+func _spawn_door(pos: Vector2, title: String, key: String, flag: String, req_flag: String, style: String) -> void:
 	var d = DOOR_SCENE.instantiate()
 	d.position = pos
 	d.door_name = title
 	d.required_key = key
 	d.open_flag = flag
+	d.required_flag = req_flag
+	d.door_style = style
 	actors.add_child(d)
 
 func _spawn_pickup(pos: Vector2, title: String, kind: String, amount: int = 1) -> void:
@@ -128,20 +161,20 @@ func _spawn_pickup(pos: Vector2, title: String, kind: String, amount: int = 1) -
 	actors.add_child(p)
 
 func _spawn_enemies() -> void:
-	_spawn_enemy(Vector2(560,610), "Starved Gaoler", 34, 8, false, "res://assets/ghoul.svg")
-	_spawn_enemy(Vector2(1280,560), "Infirmary Husk", 42, 10, false, "res://assets/horror_maw.svg")
-	_spawn_enemy(Vector2(1780,430), "Bell Cult Horror", 52, 12, false, "res://assets/horror_bell_husk.svg")
+	_spawn_enemy(Vector2(560,610), "Starved Gaoler", 34, 8, false, "demon_a")
+	_spawn_enemy(Vector2(1280,560), "Blood Husk", 42, 10, false, "blood_monster")
+	_spawn_enemy(Vector2(1770,430), "Winged Penitent", 52, 12, false, "flying_demon")
 	if not bool(GameState.flags.get("boss_dead", false)):
-		_spawn_enemy(Vector2(2160,650), "The Bell Warden", 110, 17, true, "res://assets/horror_warden.svg", "ritual_done")
+		_spawn_enemy(Vector2(2200,610), "The Bell Warden", 120, 17, true, "demon_slime", "heart_open")
 
-func _spawn_enemy(pos: Vector2, title: String, hp: int, atk: int, boss: bool, texture: String, required_flag: String = "") -> void:
+func _spawn_enemy(pos: Vector2, title: String, hp: int, atk: int, boss: bool, set_name: String, required_flag: String = "") -> void:
 	var e = ENEMY_SCENE.instantiate()
 	e.position = pos
 	e.enemy_name = title
 	e.max_hp = hp
 	e.attack = atk
 	e.is_boss = boss
-	e.texture_path = texture
+	e.asset_set = set_name
 	e.required_flag = required_flag
 	actors.add_child(e)
 	e.set_player(player)
@@ -200,7 +233,7 @@ func _finish_battle(victory: bool, enemy) -> void:
 		GameState.save_game()
 		ending_reached.emit(
 			"THE SILENT BELL",
-			"The Bell Warden falls and the ancient mechanism beneath the temple finally stops.\n\nYou leave the dungeon alive, but every night you still hear one final toll beneath the earth."
+			"The Bell Warden collapses before the dead mechanism beneath the city. The final toll never comes.\n\nYou climb toward daylight carrying the knowledge that the thing below was only a lock — and something older remains behind it."
 		)
 
 func _pause_enemies(paused: bool) -> void:
@@ -219,15 +252,19 @@ func _update_objective() -> void:
 	if not GameState.has_key_item("Rust Key"):
 		next = "OLD PRISON — Search the western cells for the Rust Key."
 	elif not bool(GameState.flags.get("infirmary_open", false)):
-		next = "OLD PRISON — Use the Rust Key on the iron gate to the east."
+		next = "OLD PRISON — Unlock the eastern iron gate."
 	elif not bool(GameState.flags.get("met_maren", false)):
-		next = "INFIRMARY — Find Maren and speak with her."
+		next = "INFIRMARY — Find Maren."
 	elif not GameState.has_key_item("Bell Sigil"):
 		next = "INFIRMARY — Search beyond the Deep Shrine for the Bell Sigil."
 	elif not bool(GameState.flags.get("temple_open", false)):
-		next = "INFIRMARY — Open the Temple Bell Gate with the Bell Sigil."
+		next = "INFIRMARY — Use the Bell Sigil on the Temple Gate."
+	elif not bool(GameState.flags.get("met_sever", false)):
+		next = "TEMPLE — Find Priest Sever."
 	elif not bool(GameState.flags.get("ritual_done", false)):
-		next = "TEMPLE — Inspect the ritual seal before approaching the Warden."
+		next = "TEMPLE — Break the red ritual seal."
+	elif not bool(GameState.flags.get("heart_open", false)):
+		next = "TEMPLE — Open the Heart Gate."
 	elif not bool(GameState.flags.get("boss_dead", false)):
 		next = "HEART OF THE BELL — Defeat the Bell Warden."
 	else:
