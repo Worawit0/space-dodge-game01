@@ -13,6 +13,7 @@ var stats_text: Label
 var action_button: Button
 var category := "Items"
 var entries: Array[String] = []
+var tab_buttons: Dictionary = {}
 
 func _ready() -> void:
 	_build()
@@ -44,67 +45,91 @@ func _build() -> void:
 	root.visible = false
 	add_child(root)
 
+	var bg := TextureRect.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	if ResourceLoader.exists("res://assets/v9/ui/inventory_bg.png"):
+		bg.texture = load("res://assets/v9/ui/inventory_bg.png")
+	root.add_child(bg)
+
 	var dim := ColorRect.new()
-	dim.color = Color(0,0,0,0.86)
+	dim.color = Color(0.01,0.005,0.009,0.58)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
 
 	var panel := PanelContainer.new()
 	panel.anchor_left = 0.055
-	panel.anchor_top = 0.055
+	panel.anchor_top = 0.045
 	panel.anchor_right = 0.945
-	panel.anchor_bottom = 0.945
-	panel.add_theme_stylebox_override("panel", UI.panel_style(0.985))
+	panel.anchor_bottom = 0.955
+	panel.add_theme_stylebox_override("panel",UI.panel_style(0.985))
 	root.add_child(panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 30)
-	margin.add_theme_constant_override("margin_right", 30)
-	margin.add_theme_constant_override("margin_top", 24)
-	margin.add_theme_constant_override("margin_bottom", 24)
+	margin.add_theme_constant_override("margin_left",34)
+	margin.add_theme_constant_override("margin_right",34)
+	margin.add_theme_constant_override("margin_top",26)
+	margin.add_theme_constant_override("margin_bottom",26)
 	panel.add_child(margin)
 
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 14)
+	outer.add_theme_constant_override("separation",12)
 	margin.add_child(outer)
-	outer.add_child(UI.title_label("INVENTORY", 34))
+
+	var title_row := HBoxContainer.new()
+	outer.add_child(title_row)
+	var title := UI.title_label("INVENTORY",34)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	var equipped := UI.heading_label("EQUIPMENT & SURVIVAL",14)
+	equipped.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title_row.add_child(equipped)
+	UI.add_divider(outer)
 
 	var cats := HBoxContainer.new()
-	cats.add_theme_constant_override("separation", 8)
+	cats.add_theme_constant_override("separation",8)
 	outer.add_child(cats)
 	for c in ["Items","Weapons","Armor","Key Items"]:
 		var b := Button.new()
 		b.text = c.to_upper()
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		UI.style_button(b)
+		UI.style_button(b,true)
 		b.pressed.connect(_set_category.bind(c))
 		cats.add_child(b)
+		tab_buttons[c] = b
 
 	var split := HSplitContainer.new()
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	split.split_offset = 440
+	split.split_offset = 445
 	outer.add_child(split)
 
+	var left_panel := PanelContainer.new()
+	left_panel.add_theme_stylebox_override("panel",UI.slot_style())
+	left_panel.custom_minimum_size = Vector2(420,0)
+	split.add_child(left_panel)
 	item_list = ItemList.new()
-	item_list.custom_minimum_size = Vector2(420,0)
+	item_list.custom_minimum_size = Vector2(395,0)
 	UI.style_item_list(item_list)
 	item_list.item_selected.connect(_on_selected)
-	split.add_child(item_list)
+	left_panel.add_child(item_list)
 
 	var right := VBoxContainer.new()
-	right.add_theme_constant_override("separation", 12)
+	right.add_theme_constant_override("separation",12)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.add_child(right)
 
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 18)
+	top.add_theme_constant_override("separation",20)
 	right.add_child(top)
 
 	var preview_panel := PanelContainer.new()
-	preview_panel.custom_minimum_size = Vector2(132,132)
-	preview_panel.add_theme_stylebox_override("panel", UI.panel_style(0.84))
+	preview_panel.custom_minimum_size = Vector2(170,170)
+	preview_panel.add_theme_stylebox_override("panel",UI.slot_style())
 	top.add_child(preview_panel)
 	preview = TextureRect.new()
-	preview.custom_minimum_size = Vector2(104,104)
+	preview.custom_minimum_size = Vector2(142,142)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -112,28 +137,32 @@ func _build() -> void:
 
 	var title_box := VBoxContainer.new()
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation",8)
 	top.add_child(title_box)
-	detail_title = UI.title_label("Select an item",26)
+	detail_title = UI.title_label("Select an item",27)
 	detail_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	title_box.add_child(detail_title)
-	stats_text = UI.body_label("",16)
-	stats_text.add_theme_color_override("font_color",Color(0.82,0.72,0.52))
+	stats_text = UI.body_label("",14)
+	stats_text.add_theme_color_override("font_color",Color(0.82,0.69,0.50))
 	title_box.add_child(stats_text)
 
-	detail_text = UI.body_label("",18)
-	detail_text.custom_minimum_size = Vector2(0,120)
+	UI.add_divider(right)
+	detail_text = UI.body_label("",17)
+	detail_text.custom_minimum_size = Vector2(0,130)
 	detail_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(detail_text)
 
 	action_button = Button.new()
 	action_button.text = "ACTION"
+	action_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UI.style_button(action_button)
 	action_button.pressed.connect(_on_action)
 	right.add_child(action_button)
 
 	var close_button := Button.new()
-	close_button.text = "BACK  [Esc]"
-	UI.style_button(close_button)
+	close_button.text = "BACK  [ESC]"
+	close_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UI.style_button(close_button,true)
 	close_button.pressed.connect(close)
 	right.add_child(close_button)
 
@@ -142,9 +171,18 @@ func _set_category(next_category: String) -> void:
 	AudioManager.play_ui()
 	refresh()
 
+func _refresh_tabs() -> void:
+	for key in tab_buttons.keys():
+		var b: Button = tab_buttons[key]
+		if key == category:
+			b.add_theme_color_override("font_color",Color(1.0,0.76,0.36))
+		else:
+			b.add_theme_color_override("font_color",Color(0.84,0.79,0.71))
+
 func refresh() -> void:
 	if not item_list:
 		return
+	_refresh_tabs()
 	item_list.clear()
 	entries.clear()
 	match category:
@@ -156,22 +194,24 @@ func refresh() -> void:
 		"Weapons":
 			for name in GameState.owned_weapons:
 				entries.append(str(name))
-				var mark := "  ✓ EQUIPPED" if name == GameState.equipped_weapon else ""
+				var mark := "   [EQUIPPED]" if name == GameState.equipped_weapon else ""
 				item_list.add_item("%s   ATK +%d%s" % [name,int(GameState.WEAPONS[name].attack),mark])
 		"Armor":
 			for name in GameState.owned_armor:
 				entries.append(str(name))
-				var mark := "  ✓ EQUIPPED" if name == GameState.equipped_armor else ""
+				var mark := "   [EQUIPPED]" if name == GameState.equipped_armor else ""
 				item_list.add_item("%s   DEF +%d%s" % [name,int(GameState.ARMOR[name].defense),mark])
 		"Key Items":
 			for name in GameState.key_items:
 				entries.append(str(name))
 				item_list.add_item(str(name))
-	stats_text.text = "BODY %.0f   MIND %.0f   HUNGER %.0f   TORCH %.0f\n%s  ATK %d\n%s  DEF %d" % [
+
+	stats_text.text = "BODY %.0f / 100    MIND %.0f    HUNGER %.0f    TORCH %.0f\n\nWEAPON  %s    ATK %d\nARMOR     %s    DEF %d" % [
 		GameState.body,GameState.mind,GameState.hunger,GameState.torch,
 		GameState.equipped_weapon,GameState.attack_power(),
 		GameState.equipped_armor,GameState.armor_defense()
 	]
+
 	if entries.is_empty():
 		detail_title.text = "Nothing here"
 		detail_text.text = "This category is empty."
@@ -197,7 +237,7 @@ func _show_entry(index: int) -> void:
 			action_button.text = "USE ITEM"
 			action_button.disabled = false
 		"Weapons":
-			detail_text.text = str(GameState.WEAPONS[name].description)
+			detail_text.text = str(GameState.WEAPONS[name].description) + "\n\nThe weapon is visibly carried by the player after equipping."
 			action_button.text = "EQUIPPED" if name == GameState.equipped_weapon else "EQUIP WEAPON"
 			action_button.disabled = name == GameState.equipped_weapon
 		"Armor":
