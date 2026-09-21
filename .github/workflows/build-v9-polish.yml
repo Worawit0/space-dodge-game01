@@ -1,0 +1,312 @@
+name: Build Forsaken Depths Gothic Polish V9
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-v9-polish-20260921
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-v9-polish-20260921
+
+      - name: Prepare V9 project
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenV9 /tmp/packs /tmp/ext /tmp/windows /tmp/release
+          cp -a forsaken_v7 /tmp/ForsakenV9
+          mkdir -p /tmp/packs /tmp/ext /tmp/windows /tmp/release /tmp/ForsakenV9/assets/v9/fonts
+          test -f /tmp/ForsakenV9/scripts/actors/player.gd
+          test -f /tmp/ForsakenV9/scripts/ui/ui_factory.gd
+
+      - name: Download visual asset packs
+        run: |
+          set -euxo pipefail
+          npm install -g itchio-downloader
+
+          dl () {
+            key="$1"
+            url="$2"
+            mkdir -p "/tmp/packs/$key" "/tmp/ext/$key"
+            itchio-downloader --url "$url" --downloadDirectory "/tmp/packs/$key"
+            archive=$(find "/tmp/packs/$key" -type f ! -name '*metadata.json' -print -quit)
+            test -n "$archive"
+            echo "$key -> $archive"
+            if file "$archive" | grep -qi 'Zip archive'; then
+              unzip -q "$archive" -d "/tmp/ext/$key"
+            else
+              7z x -y "$archive" -o"/tmp/ext/$key" >/dev/null
+            fi
+          }
+
+          dl warrior https://foozlecc.itch.io/lucifer-warrior
+          dl cultist https://foozlecc.itch.io/lucifer-cultist-enemy
+          dl equipment https://foozlecc.itch.io/lucifer-equipment
+          dl dungeon https://pixel-poem.itch.io/dungeon-assetpuck
+          dl darkui https://hypnobius.itch.io/dark-ages-ui
+          dl door https://jitsukoan.itch.io/demon-door
+          dl demons https://zerie.itch.io/tiny-rpg-character-asset-pack-02
+          dl flying https://xzany.itch.io/flying-demon-2d-pixel-art
+          dl boss https://chierit.itch.io/boss-demon-slime
+          dl infernus https://pvgames.itch.io/infernus-tileset
+
+          mkdir -p /tmp/packs/horrorsfx /tmp/ext/horrorsfx
+          itchio-downloader --url https://liminal-space-dev.itch.io/free-horror-sfx-sounds --downloadDirectory /tmp/packs/horrorsfx
+          hzip=$(find /tmp/packs/horrorsfx -type f -name 'horror_sfx_vol_1.zip' -print -quit)
+          if [ -z "$hzip" ]; then hzip=$(find /tmp/packs/horrorsfx -type f -name '*.zip' -print -quit); fi
+          test -n "$hzip"
+          unzip -q "$hzip" -d /tmp/ext/horrorsfx
+
+      - name: Build V8 normalized base assets
+        env:
+          GAME_ROOT: /tmp/ForsakenV9
+        run: |
+          set -euxo pipefail
+          python3 -m pip install pillow
+          python3 "$GITHUB_WORKSPACE/.github/scripts/build_v8_assets.py" | tee /tmp/assets_v8.log
+          grep -q "V8_ASSET_BUILD_OK" /tmp/assets_v8.log
+
+      - name: Install gothic UI fonts
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/ForsakenV9/assets/v9/fonts
+          curl -L --fail --retry 3 \
+            https://raw.githubusercontent.com/google-fonts-bower/cinzel-bower/master/Cinzel-Regular.ttf \
+            -o /tmp/ForsakenV9/assets/v9/fonts/Cinzel-Regular.ttf
+          curl -L --fail --retry 3 \
+            https://raw.githubusercontent.com/google-fonts-bower/cinzel-bower/master/Cinzel-Bold.ttf \
+            -o /tmp/ForsakenV9/assets/v9/fonts/Cinzel-Bold.ttf
+          curl -L --fail --retry 3 \
+            https://raw.githubusercontent.com/google-fonts-bower/cinzel-bower/master/OFL.txt \
+            -o /tmp/ForsakenV9/assets/v9/fonts/OFL.txt
+          test -s /tmp/ForsakenV9/assets/v9/fonts/Cinzel-Regular.ttf
+          test -s /tmp/ForsakenV9/assets/v9/fonts/Cinzel-Bold.ttf
+
+      - name: Generate V9 gothic UI polish
+        env:
+          GAME_ROOT: /tmp/ForsakenV9
+        run: |
+          set -euxo pipefail
+          python3 "$GITHUB_WORKSPACE/.github/scripts/build_v9_polish.py" | tee /tmp/v9ui.log
+          grep -q "V9_UI_POLISH_OK" /tmp/v9ui.log
+          test -s /tmp/ForsakenV9/assets/v9/ui/panel.png
+          test -s /tmp/ForsakenV9/assets/v9/ui/title_bg.png
+
+      - name: Write V9 credits
+        run: |
+          cat > /tmp/ForsakenV9/ASSET_CREDITS.md <<'EOF'
+          # The Forsaken Depths — Gothic Polish V9
+
+          Visual and audio sources used in this prototype are integrated into the game rather than redistributed as standalone packs.
+
+          - Dark Ages UI — Hypnobius.
+          - 2D Pixel Dungeon Asset Pack — Pixel_Poem.
+          - Demon Door — Jitsu Koan / TheRealFusion credit noted by the pack.
+          - Tiny RPG Character Asset Pack 02 — Zerie.
+          - Flying Demon 2D Pixel Art — Mattz Art.
+          - Boss: Demon Slime — chierit, CC BY 4.0.
+          - Lucifer Warrior / Cultist / Equipment — Foozle/FoozleCC.
+          - Infernus Tileset — PVGames, selected environmental props.
+          - FREE HORROR SFX — Liminal Games.
+          - Cinzel — Google Fonts / Natanael Gama, SIL Open Font License 1.1. OFL.txt is included under assets/v9/fonts.
+
+          V9-specific UI composition, equipment visualization, map integration, gameplay logic and supporting generated textures are original project work.
+
+          Re-check original asset pages and their terms before a public commercial release.
+          EOF
+
+      - name: Download Godot 4.7.2 stable
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip \
+            -o /tmp/godot.zip
+          rm -rf /tmp/godot
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' -print -quit)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Import and parse V9
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenV9 --import 2>&1 | tee /tmp/import.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/import.log; then
+            exit 1
+          fi
+          test -d /tmp/ForsakenV9/.godot/imported
+
+      - name: Runtime QA V9 weapon visuals monster size and UI
+        run: |
+          set -euxo pipefail
+          cat > /tmp/ForsakenV9/tests/runtime_v9_qa.gd <<'GDSCRIPT'
+          extends SceneTree
+
+          var failed := false
+
+          func ok(cond: bool, msg: String) -> void:
+              if cond:
+                  print("PASS: ", msg)
+              else:
+                  push_error("V9 QA FAIL: " + msg)
+                  failed = true
+
+          func _init() -> void:
+              call_deferred("_run")
+
+          func _run() -> void:
+              await process_frame
+
+              for p in [
+                  "res://assets/v9/fonts/Cinzel-Regular.ttf",
+                  "res://assets/v9/fonts/Cinzel-Bold.ttf",
+                  "res://assets/v9/ui/panel.png",
+                  "res://assets/v9/ui/button_hover.png",
+                  "res://assets/v9/ui/title_bg.png",
+                  "res://assets/v9/ui/battle_bg.png",
+                  "res://assets/v8/items/rusted_sword.png",
+                  "res://assets/v8/items/bearded_axe.png",
+                  "res://assets/v8/items/greatsword.png"
+              ]:
+                  ok(ResourceLoader.exists(p), "resource exists " + p)
+                  ok(load(p) != null, "resource loads " + p)
+
+              var gs = root.get_node_or_null("GameState")
+              ok(gs != null, "GameState autoload")
+              if gs == null:
+                  quit(1)
+                  return
+
+              gs.reset_new_game()
+              var world = load("res://scenes/world/game_world.tscn").instantiate()
+              root.add_child(world)
+              await process_frame
+              await process_frame
+
+              ok(world.player != null, "player spawned")
+              ok(world.player.weapon_sprite != null, "equipped weapon visual node exists")
+              var sword_path := world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
+              ok(sword_path.ends_with("rusted_sword.png"), "default sword visual is visible")
+
+              gs.add_weapon("Bearded Axe")
+              ok(gs.equip_weapon("Bearded Axe"), "equip axe succeeds")
+              await process_frame
+              var axe_path := world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
+              ok(axe_path.ends_with("bearded_axe.png"), "axe changes the player's visible weapon")
+              ok(world.player.weapon_sprite.scale.x >= 2.7, "axe visual is large enough to read")
+
+              gs.add_weapon("Greatsword")
+              ok(gs.equip_weapon("Greatsword"), "equip greatsword succeeds")
+              await process_frame
+              var great_path := world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
+              ok(great_path.ends_with("greatsword.png"), "greatsword changes the player's visible weapon")
+              ok(great_path != axe_path and axe_path != sword_path, "all three weapon visuals are distinct")
+
+              var enemies = get_nodes_in_group("enemy")
+              ok(enemies.size() >= 4, "enemies spawned")
+              var found_normal := false
+              var found_boss := false
+              for e in enemies:
+                  if e.is_boss:
+                      found_boss = true
+                      ok(e.sprite.scale.x >= 0.95, "boss world sprite enlarged")
+                      ok(e.get_battle_scale().x >= 1.5, "boss battle sprite enlarged")
+                  else:
+                      found_normal = true
+                      if e.asset_set in ["demon_a","blood_monster"]:
+                          ok(e.sprite.scale.x >= 2.0, e.enemy_name + " world sprite enlarged")
+                          ok(e.get_battle_scale().x >= 4.0, e.enemy_name + " battle sprite enlarged")
+              ok(found_normal and found_boss, "normal enemies and boss checked")
+
+              ok(world.hud != null and world.hud.area_label != null, "new area-title HUD exists")
+              ok(world.inventory != null and world.inventory.tab_buttons.size() == 4, "four styled inventory tabs exist")
+              ok(world.battle != null and world.battle.target_buttons.size() == 4, "battle uses four body-part target buttons")
+              ok(world.battle.get("target_select") == null, "old plain OptionButton targeting is gone")
+
+              world._toggle_inventory()
+              await process_frame
+              ok(world.inventory.is_open(), "new inventory opens")
+              ok(world.inventory.preview != null, "inventory preview exists")
+              world.inventory.close()
+
+              var ui_script = load("res://scripts/ui/ui_factory.gd")
+              ok(ui_script.title_font() != null, "custom Cinzel title font loads")
+              ok(ui_script.body_font() != null, "custom Cinzel body font loads")
+
+              gs.damage(9999.0, "V9 QA death")
+              ok(gs.body <= 0.0, "death system still works")
+
+              world.queue_free()
+              await process_frame
+
+              if failed:
+                  push_error("V9_POLISH_QA_FAILED")
+                  quit(1)
+              else:
+                  print("V9_POLISH_QA_PASS")
+                  quit(0)
+          GDSCRIPT
+
+          "$GODOT_BIN" --headless --path /tmp/ForsakenV9 -s res://tests/runtime_v9_qa.gd 2>&1 | tee /tmp/qa.log
+          grep -q "V9_POLISH_QA_PASS" /tmp/qa.log
+          if grep -E "V9 QA FAIL|V9_POLISH_QA_FAILED|SCRIPT ERROR|Parse Error|Invalid call|Invalid get index" /tmp/qa.log; then
+            exit 1
+          fi
+          rm -f /tmp/ForsakenV9/tests/runtime_v9_qa.gd
+
+      - name: Smoke launch V9 main scene
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenV9 --quit-after 4 2>&1 | tee /tmp/game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid get index|ERROR: Cannot open file" /tmp/game.log; then
+            exit 1
+          fi
+
+      - name: Install Windows export templates
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz \
+            -o /tmp/templates.tpz
+          rm -rf /tmp/templates
+          mkdir -p /tmp/templates
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Export Windows build
+        run: |
+          set -euxo pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenV9 \
+            --export-release "Windows Desktop" /tmp/windows/TheForsakenDepths_V9.exe
+          test -s /tmp/windows/TheForsakenDepths_V9.exe
+          cp /tmp/ForsakenV9/ASSET_CREDITS.md /tmp/windows/ASSET_CREDITS.md
+          cp /tmp/ForsakenV9/README_TH.md /tmp/windows/README_TH.md
+
+      - name: Package V9
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenV9/.godot
+          cd /tmp
+          zip -qr /tmp/release/TheForsakenDepths_GOTHIC_POLISH_V9_PROJECT.zip ForsakenV9
+          cd /tmp/windows
+          zip -qr /tmp/release/TheForsakenDepths_GOTHIC_POLISH_V9_WINDOWS.zip .
+          test -s /tmp/release/TheForsakenDepths_GOTHIC_POLISH_V9_PROJECT.zip
+          test -s /tmp/release/TheForsakenDepths_GOTHIC_POLISH_V9_WINDOWS.zip
+          ls -lh /tmp/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_GOTHIC_POLISH_V9
+          path: /tmp/release/*
+          compression-level: 0
+          if-no-files-found: error
