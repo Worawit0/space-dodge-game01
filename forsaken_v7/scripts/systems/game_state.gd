@@ -131,7 +131,7 @@ func use_consumable(item_name: String) -> bool:
 	return true
 
 func damage(raw_amount: float, reason: String = "Your wounds were fatal.") -> void:
-	var actual := max(1.0, raw_amount - float(armor_defense()))
+	var actual: float = maxf(1.0, raw_amount - float(armor_defense()))
 	body = max(0.0, body - actual)
 	stats_changed.emit()
 	if body <= 0.0:
