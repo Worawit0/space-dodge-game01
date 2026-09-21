@@ -31,7 +31,13 @@ func _run() -> void:
 		var res = load(path)
 		check(res != null, "scene loads: " + path)
 
-	var gs = root.get_node_or_null("GameState")\n\tcheck(gs != null, "GameState autoload exists")\n\tif gs == null:\n\t\tquit(1)\n\t\treturn\n\tgs.reset_new_game()
+	var gs = root.get_node_or_null("GameState")
+	check(gs != null, "GameState autoload exists")
+	if gs == null:
+		quit(1)
+		return
+
+	gs.reset_new_game()
 	gs.add_weapon("Bearded Axe")
 	check(gs.equip_weapon("Bearded Axe"), "weapon equip returns true")
 	check(gs.equipped_weapon == "Bearded Axe", "equipped weapon state updated")
