@@ -18,7 +18,7 @@ func _draw_floor() -> void:
 	draw_rect(Rect2(0,0,2400,1200), Color(0.07,0.055,0.052))
 	for y in range(90,1110,48):
 		for x in range(90,2310,64):
-			var alt := ((x/64)+(y/48)) as int
+			var alt := int(x / 64) + int(y / 48)
 			var c := Color(0.105,0.082,0.072) if alt % 2 == 0 else Color(0.092,0.072,0.066)
 			draw_rect(Rect2(x+2,y+2,60,44), c)
 			draw_line(Vector2(x+4,y+44),Vector2(x+58,y+44),Color(0.03,0.025,0.024),1)
