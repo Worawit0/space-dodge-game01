@@ -1,0 +1,137 @@
+name: Build Forsaken Depths Structured V7
+
+on:
+  push:
+    branches:
+      - chatgpt-forsaken-structured-v7-20260921
+  workflow_dispatch:
+
+jobs:
+  test-build-package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-forsaken-structured-v7-20260921
+
+      - name: Prepare complete project
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenStructuredV7 /tmp/windows /tmp/release
+          cp -a forsaken_v7 /tmp/ForsakenStructuredV7
+          mkdir -p /tmp/ForsakenStructuredV7/assets/audio /tmp/windows /tmp/release
+          cp -a forsaken2d/assets/. /tmp/ForsakenStructuredV7/assets/
+          test -f /tmp/ForsakenStructuredV7/assets/player.svg
+          test -f /tmp/ForsakenStructuredV7/assets/horror_warden.svg
+
+      - name: Generate stable WAV audio set
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import wave, math, random, struct
+          from pathlib import Path
+          random.seed(7)
+          out=Path('/tmp/ForsakenStructuredV7/assets/audio')
+          out.mkdir(parents=True,exist_ok=True)
+          rate=22050
+
+          def write(name,duration,fn):
+              n=int(rate*duration)
+              with wave.open(str(out/name),'wb') as w:
+                  w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+                  buf=bytearray()
+                  for i in range(n):
+                      t=i/rate
+                      v=max(-1,min(1,fn(t,i)))
+                      buf += struct.pack('<h',int(v*32767))
+                  w.writeframes(buf)
+
+          write('dungeon_ambient.wav',4.0,lambda t,i: 0.08*math.sin(2*math.pi*46*t)+0.035*math.sin(2*math.pi*71*t)+random.uniform(-0.018,0.018))
+          write('step.wav',0.08,lambda t,i: random.uniform(-0.20,0.20)*(1-t/0.08))
+          write('door.wav',0.9,lambda t,i: (0.16*math.sin(2*math.pi*(82+35*t)*t)+random.uniform(-0.04,0.04))*(1-t/0.9))
+          write('locked.wav',0.18,lambda t,i: 0.20*math.sin(2*math.pi*220*t)*(1-t/0.18))
+          write('pickup.wav',0.22,lambda t,i: 0.18*math.sin(2*math.pi*(390+300*t)*t)*(1-t/0.22))
+          write('shrine.wav',1.2,lambda t,i: 0.13*(math.sin(2*math.pi*261.6*t)+0.5*math.sin(2*math.pi*392*t))*(1-t/1.2))
+          write('ritual.wav',1.5,lambda t,i: 0.14*math.sin(2*math.pi*(58+10*math.sin(t*4))*t)*(1-t/1.5)+random.uniform(-0.02,0.02))
+          write('monster.wav',0.7,lambda t,i: 0.16*math.sin(2*math.pi*(70-18*t)*t)+random.uniform(-0.06,0.06)*(1-t/0.7))
+          write('hit.wav',0.13,lambda t,i: random.uniform(-0.30,0.30)*(1-t/0.13))
+          write('hurt.wav',0.22,lambda t,i: 0.15*math.sin(2*math.pi*95*t)+random.uniform(-0.08,0.08)*(1-t/0.22))
+          write('ui_click.wav',0.06,lambda t,i: 0.13*math.sin(2*math.pi*540*t)*(1-t/0.06))
+          for p in out.glob('*.wav'):
+              assert p.stat().st_size > 100
+              print(p.name,p.stat().st_size)
+          PY
+
+      - name: Download Godot 4.7.2 stable
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          mkdir -p /tmp/godot
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN=$(find /tmp/godot -maxdepth 1 -type f -name 'Godot*' | head -1)
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --version
+
+      - name: Import and parse every scene and script
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenStructuredV7 --quit-after 4 2>&1 | tee /tmp/import.log
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file" /tmp/import.log; then
+            exit 1
+          fi
+
+      - name: Run structural runtime QA
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenStructuredV7 -s res://tests/runtime_qa.gd 2>&1 | tee /tmp/qa.log
+          grep -q "STRUCTURED_V7_QA_PASS" /tmp/qa.log
+          if grep -E "SCRIPT ERROR|Parse Error|Invalid call|Invalid get index|STRUCTURED_V7_QA_FAILED" /tmp/qa.log; then
+            exit 1
+          fi
+
+      - name: Smoke launch main scene
+        run: |
+          set -o pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenStructuredV7 --quit-after 3 2>&1 | tee /tmp/game.log
+          if grep -E "SCRIPT ERROR|Parse Error|Invalid call|Invalid get index|ERROR: Cannot open file" /tmp/game.log; then
+            exit 1
+          fi
+
+      - name: Install Windows export templates
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz -o /tmp/templates.tpz
+          rm -rf /tmp/templates
+          mkdir -p /tmp/templates
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Export Windows build
+        run: |
+          set -euxo pipefail
+          "$GODOT_BIN" --headless --path /tmp/ForsakenStructuredV7 --export-release "Windows Desktop" /tmp/windows/TheForsakenDepths_StructuredV7.exe
+          test -s /tmp/windows/TheForsakenDepths_StructuredV7.exe
+          cp /tmp/ForsakenStructuredV7/README_TH.md /tmp/windows/README_TH.md
+
+      - name: Package source and Windows
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ForsakenStructuredV7/.godot
+          cd /tmp
+          zip -qr /tmp/release/TheForsakenDepths_STRUCTURED_V7_PROJECT.zip ForsakenStructuredV7
+          cd /tmp/windows
+          zip -qr /tmp/release/TheForsakenDepths_STRUCTURED_V7_WINDOWS.zip .
+          test -s /tmp/release/TheForsakenDepths_STRUCTURED_V7_PROJECT.zip
+          test -s /tmp/release/TheForsakenDepths_STRUCTURED_V7_WINDOWS.zip
+          ls -lh /tmp/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheForsakenDepths_STRUCTURED_V7
+          path: /tmp/release/*
+          compression-level: 0
+          if-no-files-found: error
