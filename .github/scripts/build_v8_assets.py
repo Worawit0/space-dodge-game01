@@ -199,7 +199,7 @@ for name,(x0,x1) in zip(["prison","temple","heart"],spans):
         frame=Image.new("RGBA",(canvas_w,canvas_h),(0,0,0,0))
         px=(canvas_w-base.width)//2
         py=canvas_h-base.height-lift
-        frame.alpha_composite(base,(px,py))
+        frame.paste(base,(px,py),base)
         frame.save(OUT/"gates"/f"{name}_{i:02d}.png")
 
 # Props from Infernus.
