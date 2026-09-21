@@ -124,7 +124,7 @@ jobs:
             exit 1
           fi
           test -d /tmp/ForsakenV8/.godot/imported
-          find /tmp/ForsakenV8/.godot/imported -type f | head
+          find /tmp/ForsakenV8/.godot/imported -type f -print -quit
 
       - name: Runtime QA full visual integration
         run: |
