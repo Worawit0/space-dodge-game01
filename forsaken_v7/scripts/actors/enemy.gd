@@ -7,7 +7,7 @@ signal encounter_requested(enemy)
 @export var attack := 8
 @export var move_speed := 68.0
 @export var aggro_range := 280.0
-@export var encounter_range := 48.0
+@export var encounter_range := 58.0
 @export var is_boss := false
 @export var asset_set := "demon_a"
 @export var required_flag := ""
@@ -36,6 +36,26 @@ func _load_sequence(anim_name: String, state: String, fps: float, looped: bool) 
 		if tex:
 			sprite.sprite_frames.add_frame(anim_name, tex)
 
+func _world_scale() -> Vector2:
+	match asset_set:
+		"demon_a", "blood_monster":
+			return Vector2(2.15,2.15)
+		"flying_demon":
+			return Vector2(2.25,2.25)
+		"demon_slime":
+			return Vector2(0.98,0.98)
+		_:
+			return Vector2(1.7,1.7)
+
+func _collision_profile() -> Vector2:
+	match asset_set:
+		"flying_demon":
+			return Vector2(22,52)
+		"demon_slime":
+			return Vector2(38,82)
+		_:
+			return Vector2(18,48)
+
 func _build_visuals() -> void:
 	sprite = AnimatedSprite2D.new()
 	sprite.name = "AnimatedSprite2D"
@@ -46,31 +66,26 @@ func _build_visuals() -> void:
 	_load_sequence("hurt","hurt",9.0,false)
 	_load_sequence("death","death",8.0,false)
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	sprite.position = Vector2(0,-20 if not is_boss else -38)
-	match asset_set:
-		"flying_demon":
-			sprite.scale = Vector2(1.55,1.55)
-		"demon_slime":
-			sprite.scale = Vector2(0.62,0.62)
-		_:
-			sprite.scale = Vector2(0.92,0.92)
+	sprite.position = Vector2(0,-27 if not is_boss else -46)
+	sprite.scale = _world_scale()
 	if sprite.sprite_frames.get_frame_count("idle") > 0:
 		sprite.play("idle")
 	add_child(sprite)
 
 	var shadow := Polygon2D.new()
-	var sw := 20.0 if not is_boss else 42.0
-	shadow.polygon = PackedVector2Array([Vector2(-sw,8),Vector2(sw,8),Vector2(sw*0.7,16),Vector2(-sw*0.7,16)])
-	shadow.color = Color(0,0,0,0.4)
+	var sw := 28.0 if not is_boss else 55.0
+	shadow.polygon = PackedVector2Array([Vector2(-sw,10),Vector2(sw,10),Vector2(sw*0.7,20),Vector2(-sw*0.7,20)])
+	shadow.color = Color(0,0,0,0.48)
 	shadow.z_index = -1
 	add_child(shadow)
 
 	var shape := CollisionShape2D.new()
 	var capsule := CapsuleShape2D.new()
-	capsule.radius = 14 if not is_boss else 26
-	capsule.height = 36 if not is_boss else 64
+	var profile := _collision_profile()
+	capsule.radius = profile.x
+	capsule.height = profile.y
 	shape.shape = capsule
-	shape.position = Vector2(0,3)
+	shape.position = Vector2(0,5)
 	add_child(shape)
 
 func set_player(p: CharacterBody2D) -> void:
@@ -114,12 +129,14 @@ func get_battle_frames() -> SpriteFrames:
 
 func get_battle_scale() -> Vector2:
 	match asset_set:
-		"demon_slime":
-			return Vector2(1.05,1.05)
+		"demon_a", "blood_monster":
+			return Vector2(4.6,4.6)
 		"flying_demon":
-			return Vector2(3.1,3.1)
+			return Vector2(4.0,4.0)
+		"demon_slime":
+			return Vector2(1.55,1.55)
 		_:
-			return Vector2(2.0,2.0)
+			return Vector2(3.4,3.4)
 
 func play_world_hurt() -> void:
 	if sprite.sprite_frames.get_frame_count("hurt") > 0:
@@ -142,5 +159,5 @@ func retreat_from(p: Node2D) -> void:
 	var dir: Vector2 = (global_position - p.global_position).normalized()
 	if dir.length() < 0.1:
 		dir = Vector2.RIGHT
-	global_position += dir * 120.0
+	global_position += dir * 145.0
 	encounter_cooldown = 2.5
