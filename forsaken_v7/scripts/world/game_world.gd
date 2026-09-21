@@ -36,6 +36,7 @@ func _ready() -> void:
 	GameState.inventory_changed.connect(_update_objective)
 	AudioManager.play_ambient()
 	_update_objective()
+	_update_area()
 	GameState.message_requested.emit("The descent begins. Find the Rust Key in the western prison cells.")
 
 func _build_lighting() -> void:
@@ -198,6 +199,20 @@ func _process(delta: float) -> void:
 		position_accum = 0.0
 		GameState.player_position = player.global_position
 	_update_objective()
+	_update_area()
+
+func _update_area() -> void:
+	if not hud or not player:
+		return
+	var x := player.global_position.x
+	var area := "OLD PRISON"
+	if x >= 2040.0:
+		area = "HEART OF THE BELL"
+	elif x >= 1600.0:
+		area = "TEMPLE DISTRICT"
+	elif x >= 800.0:
+		area = "ABANDONED INFIRMARY"
+	hud.set_area(area)
 
 func _toggle_inventory() -> void:
 	if battle_active:
