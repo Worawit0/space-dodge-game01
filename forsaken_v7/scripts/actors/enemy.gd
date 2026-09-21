@@ -9,7 +9,7 @@ signal encounter_requested(enemy)
 @export var aggro_range := 280.0
 @export var encounter_range := 44.0
 @export var is_boss := false
-@export var texture_path := "res://assets/ghoul.svg"
+@export var texture_path := "res://assets/ghoul.svg"\n@export var required_flag := ""
 
 var player: CharacterBody2D
 var sprite: Sprite2D
