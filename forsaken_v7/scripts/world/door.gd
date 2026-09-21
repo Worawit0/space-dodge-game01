@@ -3,6 +3,7 @@ extends Node2D
 @export var door_name := "Iron Gate"
 @export var required_key := ""
 @export var open_flag := ""
+@export var required_flag := ""
 @export_enum("prison","temple","heart") var door_style := "prison"
 
 var opening := false
@@ -64,6 +65,10 @@ func _force_open() -> void:
 func interact(_player) -> void:
 	if is_open or opening:
 		GameState.message_requested.emit(door_name + " is open.")
+		return
+	if required_flag != "" and not bool(GameState.flags.get(required_flag, false)):
+		GameState.message_requested.emit(door_name + " is bound by a ritual seal.")
+		AudioManager.play_event("locked")
 		return
 	if required_key != "" and not GameState.has_key_item(required_key):
 		GameState.message_requested.emit("%s is sealed. Required: %s" % [door_name, required_key])
