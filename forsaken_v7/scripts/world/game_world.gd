@@ -204,7 +204,7 @@ func _process(delta: float) -> void:
 func _update_area() -> void:
 	if not hud or not player:
 		return
-	var x := player.global_position.x
+	var x: float = float(player.global_position.x)
 	var area := "OLD PRISON"
 	if x >= 2040.0:
 		area = "HEART OF THE BELL"
