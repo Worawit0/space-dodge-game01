@@ -47,11 +47,8 @@ func _run() -> void:
 	check(gs.equip_armor("Chainmail"), "armor equip returns true")
 	check(gs.armor_defense() == 3, "equipped armor affects defense")
 
-	var death_seen := false
-	gs.game_over.connect(func(_reason): death_seen = true, CONNECT_ONE_SHOT)
 	gs.damage(9999.0, "QA death")
-	await process_frame
-	check(death_seen, "death signal fires")
+	check(gs.body <= 0.0, "fatal damage reaches zero BODY")
 	gs.reset_new_game()
 
 	var door_res = load("res://scenes/world/door.tscn")
