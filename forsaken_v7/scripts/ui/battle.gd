@@ -168,7 +168,7 @@ func _attack() -> void:
 			hit_chance = 1.0
 	var roll := rng.randf()
 	if roll <= hit_chance:
-		var damage := max(1, int(round((GameState.attack_power() + rng.randi_range(0,3)) * multiplier)))
+		var damage: int = maxi(1, int(round((GameState.attack_power() + rng.randi_range(0,3)) * multiplier)))
 		enemy_hp = max(0, enemy_hp - damage)
 		enemy_hp_bar.value = enemy_hp
 		log_label.text = "You strike the %s for %d damage." % [target.to_lower(), damage]
@@ -214,7 +214,7 @@ func _flee() -> void:
 func _enemy_turn(multiplier: float) -> void:
 	if current_enemy == null:
 		return
-	var damage := max(1.0, float(enemy_attack) * multiplier + rng.randf_range(-1.0,2.0))
+	var damage: float = maxf(1.0, float(enemy_attack) * multiplier + rng.randf_range(-1.0,2.0))
 	GameState.damage(damage, "The %s ended your descent." % enemy_name_label.text)
 	_update_player()
 	if GameState.body > 0:
