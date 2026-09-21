@@ -5,7 +5,7 @@ signal inventory_changed
 signal message_requested(text: String)
 signal game_over(reason: String)
 
-const SAVE_PATH := "user://forsaken_depths_structured_v7_save.json"
+const SAVE_PATH := "user://forsaken_depths_v8_fullvisual_save.json"
 
 var body := 100.0
 var mind := 100.0
