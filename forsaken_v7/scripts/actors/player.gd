@@ -7,11 +7,16 @@ signal attack_requested
 
 var can_move := true
 var sprite: AnimatedSprite2D
+var weapon_sprite: Sprite2D
+var weapon_backplate: Sprite2D
 var step_accum := 0.0
 var facing := "down"
 
 func _ready() -> void:
 	_build_visuals()
+	if not GameState.inventory_changed.is_connected(_refresh_equipment_visual):
+		GameState.inventory_changed.connect(_refresh_equipment_visual)
+	_refresh_equipment_visual()
 
 func _load_sequence(anim_name: String, prefix: String, fps: float, looped: bool = true) -> void:
 	sprite.sprite_frames.add_animation(anim_name)
@@ -36,20 +41,30 @@ func _build_visuals() -> void:
 		sprite.sprite_frames.add_frame("idle_down", load("res://assets/player.svg"))
 	sprite.animation = "idle_down"
 	sprite.position = Vector2(0,-18)
-	sprite.scale = Vector2(2.0,2.0)
+	sprite.scale = Vector2(2.25,2.25)
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(sprite)
 
 	var shadow := Polygon2D.new()
-	shadow.polygon = PackedVector2Array([Vector2(-15,8),Vector2(15,8),Vector2(10,14),Vector2(-10,14)])
-	shadow.color = Color(0,0,0,0.35)
-	shadow.z_index = -1
+	shadow.polygon = PackedVector2Array([Vector2(-18,9),Vector2(18,9),Vector2(12,16),Vector2(-12,16)])
+	shadow.color = Color(0,0,0,0.42)
+	shadow.z_index = -3
 	add_child(shadow)
+
+	weapon_backplate = Sprite2D.new()
+	weapon_backplate.name = "WeaponBackplate"
+	weapon_backplate.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	add_child(weapon_backplate)
+
+	weapon_sprite = Sprite2D.new()
+	weapon_sprite.name = "EquippedWeapon"
+	weapon_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	add_child(weapon_sprite)
 
 	var shape := CollisionShape2D.new()
 	var capsule := CapsuleShape2D.new()
-	capsule.radius = 11
-	capsule.height = 30
+	capsule.radius = 12
+	capsule.height = 32
 	shape.shape = capsule
 	shape.position = Vector2(0,3)
 	add_child(shape)
@@ -68,12 +83,62 @@ func _build_visuals() -> void:
 		var light := PointLight2D.new()
 		light.name = "TorchLight"
 		light.texture = load("res://assets/v8/fx/light.png")
-		light.texture_scale = 3.1
-		light.energy = 1.15
+		light.texture_scale = 3.25
+		light.energy = 1.18
 		light.color = Color(1.0,0.63,0.34)
 		light.position = Vector2(0,-12)
 		light.shadow_enabled = false
 		add_child(light)
+
+func _weapon_path() -> String:
+	match GameState.equipped_weapon:
+		"Bearded Axe":
+			return "res://assets/v8/items/bearded_axe.png"
+		"Greatsword":
+			return "res://assets/v8/items/greatsword.png"
+		_:
+			return "res://assets/v8/items/rusted_sword.png"
+
+func _refresh_equipment_visual() -> void:
+	if weapon_sprite == null:
+		return
+	var path := _weapon_path()
+	weapon_sprite.texture = load(path) if ResourceLoader.exists(path) else null
+	weapon_sprite.modulate = Color.WHITE
+	match GameState.equipped_weapon:
+		"Bearded Axe":
+			weapon_sprite.scale = Vector2(2.75,2.75)
+		"Greatsword":
+			weapon_sprite.scale = Vector2(2.55,2.55)
+		_:
+			weapon_sprite.scale = Vector2(2.35,2.35)
+	_update_weapon_transform()
+
+func _update_weapon_transform() -> void:
+	if weapon_sprite == null:
+		return
+	var bob := sin(Time.get_ticks_msec() * 0.009) * 1.2 if velocity.length() > 1.0 else 0.0
+	match facing:
+		"up":
+			weapon_sprite.position = Vector2(-17,-30 + bob)
+			weapon_sprite.rotation = -2.25
+			weapon_sprite.flip_h = false
+			weapon_sprite.z_index = -2
+		"left":
+			weapon_sprite.position = Vector2(-27,-13 + bob)
+			weapon_sprite.rotation = PI
+			weapon_sprite.flip_h = false
+			weapon_sprite.z_index = 3
+		"right":
+			weapon_sprite.position = Vector2(27,-13 + bob)
+			weapon_sprite.rotation = 0.0
+			weapon_sprite.flip_h = false
+			weapon_sprite.z_index = 3
+		_:
+			weapon_sprite.position = Vector2(20,-8 + bob)
+			weapon_sprite.rotation = 0.82
+			weapon_sprite.flip_h = false
+			weapon_sprite.z_index = 3
 
 func _set_animation(dir: Vector2) -> void:
 	if dir.length() > 0.1:
@@ -90,6 +155,7 @@ func _set_animation(dir: Vector2) -> void:
 		if sprite.sprite_frames.has_animation(idle_name) and sprite.sprite_frames.get_frame_count(idle_name) > 0:
 			if sprite.animation != idle_name:
 				sprite.play(idle_name)
+	_update_weapon_transform()
 
 func _physics_process(delta: float) -> void:
 	if not can_move:
