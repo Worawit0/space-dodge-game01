@@ -41,6 +41,18 @@ func _prop(path: String, pos: Vector2, scale_value: float = 1.0, z: int = 0, alp
 	sp.z_index = z
 	add_child(sp)
 
+func _light_at(pos: Vector2, color: Color, energy: float = 0.45, scale_value: float = 1.25) -> void:
+	if not ResourceLoader.exists("res://assets/v8/fx/light.png"):
+		return
+	var light := PointLight2D.new()
+	light.texture = load("res://assets/v8/fx/light.png")
+	light.position = pos
+	light.color = color
+	light.energy = energy
+	light.texture_scale = scale_value
+	light.shadow_enabled = false
+	add_child(light)
+
 func _build_visuals() -> void:
 	match layer_type:
 		"floor":
@@ -59,12 +71,17 @@ func _build_visuals() -> void:
 			_prop("res://assets/v8/props/pillar.png", Vector2(1730,860), 0.36, 2)
 			_prop("res://assets/v8/props/lantern.png", Vector2(890,190), 0.42, 3)
 			_prop("res://assets/v8/props/lantern.png", Vector2(1490,190), 0.42, 3)
+			_prop("res://assets/v8/props/lantern.png", Vector2(1985,188), 0.42, 3)
 			_prop("res://assets/v8/props/book.png", Vector2(1360,785), 0.44, 3)
+			_light_at(Vector2(890,205), Color(1.0,0.46,0.20), 0.38, 1.15)
+			_light_at(Vector2(1490,205), Color(1.0,0.46,0.20), 0.38, 1.15)
+			_light_at(Vector2(1985,205), Color(0.92,0.20,0.16), 0.34, 1.05)
 		"foreground":
 			for rect in [
 				Rect2(0,72,2400,24), Rect2(0,1098,2400,24),
 				Rect2(770,90,60,26), Rect2(770,1082,60,28),
-				Rect2(1570,90,60,26), Rect2(1570,1082,60,28)
+				Rect2(1570,90,60,26), Rect2(1570,1082,60,28),
+				Rect2(2010,90,60,26), Rect2(2010,1082,60,28)
 			]:
 				_region_sprite("res://assets/v8/dungeon/wall_top.png", rect, 0, Color(0.62,0.56,0.54,0.96))
 			_prop("res://assets/v8/dungeon/foreground_rock.png", Vector2(255,1035), 0.85, 1, 0.96)
@@ -80,9 +97,11 @@ func _wall_rects() -> Array[Rect2]:
 		Rect2(780,700,40,410),
 		Rect2(1580,90,40,410),
 		Rect2(1580,700,40,410),
+		Rect2(2020,90,40,410),
+		Rect2(2020,700,40,410),
 		Rect2(310,280,260,70),
 		Rect2(1040,835,330,70),
-		Rect2(1780,240,270,65)
+		Rect2(1700,240,230,65)
 	]
 
 func _draw() -> void:
