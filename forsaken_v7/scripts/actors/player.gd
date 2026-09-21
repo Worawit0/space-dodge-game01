@@ -64,6 +64,17 @@ func _build_visuals() -> void:
 	cam.enabled = true
 	add_child(cam)
 
+	if ResourceLoader.exists("res://assets/v8/fx/light.png"):
+		var light := PointLight2D.new()
+		light.name = "TorchLight"
+		light.texture = load("res://assets/v8/fx/light.png")
+		light.texture_scale = 3.1
+		light.energy = 1.15
+		light.color = Color(1.0,0.63,0.34)
+		light.position = Vector2(0,-12)
+		light.shadow_enabled = false
+		add_child(light)
+
 func _set_animation(dir: Vector2) -> void:
 	if dir.length() > 0.1:
 		if abs(dir.x) > abs(dir.y):
