@@ -119,10 +119,12 @@ jobs:
       - name: Import and parse V8 project
         run: |
           set -o pipefail
-          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenV8 --quit-after 5 2>&1 | tee /tmp/import.log
+          "$GODOT_BIN" --headless --editor --path /tmp/ForsakenV8 --import 2>&1 | tee /tmp/import.log
           if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: Cannot open file|Invalid call|Invalid get index" /tmp/import.log; then
             exit 1
           fi
+          test -d /tmp/ForsakenV8/.godot/imported
+          find /tmp/ForsakenV8/.godot/imported -type f | head
 
       - name: Runtime QA full visual integration
         run: |
