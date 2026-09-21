@@ -9,7 +9,8 @@ signal encounter_requested(enemy)
 @export var aggro_range := 280.0
 @export var encounter_range := 44.0
 @export var is_boss := false
-@export var texture_path := "res://assets/ghoul.svg"\n@export var required_flag := ""
+@export var texture_path := "res://assets/ghoul.svg"
+@export var required_flag := ""
 
 var player: CharacterBody2D
 var sprite: Sprite2D
@@ -39,18 +40,21 @@ func set_player(p: CharacterBody2D) -> void:
 	player = p
 
 func _physics_process(delta: float) -> void:
+	if required_flag != "" and not bool(GameState.flags.get(required_flag, false)):
+		velocity = Vector2.ZERO
+		return
 	if defeated or player == null:
 		velocity = Vector2.ZERO
 		return
-	encounter_cooldown = max(0.0, encounter_cooldown - delta)
-	var dist := global_position.distance_to(player.global_position)
+	encounter_cooldown = maxf(0.0, encounter_cooldown - delta)
+	var dist: float = global_position.distance_to(player.global_position)
 	if dist <= encounter_range and encounter_cooldown <= 0.0:
 		velocity = Vector2.ZERO
 		encounter_cooldown = 2.0
 		encounter_requested.emit(self)
 		return
 	if dist <= aggro_range:
-		var dir := (player.global_position - global_position).normalized()
+		var dir: Vector2 = (player.global_position - global_position).normalized()
 		velocity = dir * move_speed
 		move_and_slide()
 		if sprite:
@@ -75,7 +79,7 @@ func defeat() -> void:
 func retreat_from(p: Node2D) -> void:
 	if defeated:
 		return
-	var dir := (global_position - p.global_position).normalized()
+	var dir: Vector2 = (global_position - p.global_position).normalized()
 	if dir.length() < 0.1:
 		dir = Vector2.RIGHT
 	global_position += dir * 120.0
