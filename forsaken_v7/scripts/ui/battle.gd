@@ -11,6 +11,7 @@ var player_status: Label
 var log_label: Label
 var target_select: OptionButton
 var attack_button: Button
+var battle_sprite: AnimatedSprite2D
 var current_enemy
 var enemy_hp := 0
 var enemy_max_hp := 0
@@ -38,54 +39,73 @@ func begin(enemy) -> void:
 	enemy_hp_bar.max_value = enemy_max_hp
 	enemy_hp_bar.value = enemy_hp
 	log_label.text = "The creature blocks your path. Choose where to strike."
+	if enemy.has_method("get_battle_frames"):
+		battle_sprite.sprite_frames = enemy.get_battle_frames()
+		battle_sprite.scale = enemy.get_battle_scale()
+		if battle_sprite.sprite_frames.has_animation("idle"):
+			battle_sprite.play("idle")
+	battle_sprite.visible = true
 	root.visible = true
+	attack_button.disabled = false
 	_update_player()
-	AudioManager.play_sfx("res://assets/audio/monster.wav")
+	AudioManager.play_event("monster")
 
 func _build() -> void:
 	root = Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.visible = false
 	add_child(root)
+
+	var bg := TextureRect.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if ResourceLoader.exists("res://assets/v8/ui/battle_bg.png"):
+		bg.texture = load("res://assets/v8/ui/battle_bg.png")
+	root.add_child(bg)
+
 	var dim := ColorRect.new()
-	dim.color = Color(0.015,0.008,0.01,0.93)
+	dim.color = Color(0.015,0.004,0.008,0.60)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
 
-	var enemy_panel := PanelContainer.new()
-	enemy_panel.anchor_left = 0.23
-	enemy_panel.anchor_top = 0.08
-	enemy_panel.anchor_right = 0.77
-	enemy_panel.anchor_bottom = 0.42
-	enemy_panel.add_theme_stylebox_override("panel", UI.panel_style(0.98))
-	root.add_child(enemy_panel)
-	var enemy_box := VBoxContainer.new()
-	enemy_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	enemy_box.add_theme_constant_override("separation", 12)
-	enemy_panel.add_child(enemy_box)
-	enemy_name_label = UI.title_label("ENEMY", 34)
-	enemy_box.add_child(enemy_name_label)
-	var silhouette := UI.body_label("◢  ◆  ◣
-  ╲╱
-  ╱╲", 34)
-	silhouette.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	silhouette.add_theme_color_override("font_color", Color(0.55,0.12,0.13))
-	enemy_box.add_child(silhouette)
+	var title_panel := PanelContainer.new()
+	title_panel.anchor_left = 0.27
+	title_panel.anchor_top = 0.035
+	title_panel.anchor_right = 0.73
+	title_panel.anchor_bottom = 0.18
+	title_panel.add_theme_stylebox_override("panel", UI.panel_style(0.92))
+	root.add_child(title_panel)
+	var title_box := VBoxContainer.new()
+	title_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	title_panel.add_child(title_box)
+	enemy_name_label = UI.title_label("ENEMY", 30)
+	title_box.add_child(enemy_name_label)
 	enemy_hp_bar = ProgressBar.new()
-	enemy_hp_bar.custom_minimum_size = Vector2(420, 20)
+	enemy_hp_bar.custom_minimum_size = Vector2(440, 18)
 	enemy_hp_bar.show_percentage = false
-	var hpbg := StyleBoxFlat.new(); hpbg.bg_color = Color(0.025,0.02,0.025)
-	var hpfill := StyleBoxFlat.new(); hpfill.bg_color = Color(0.55,0.07,0.08)
+	var hpbg := StyleBoxFlat.new()
+	hpbg.bg_color = Color(0.025,0.018,0.022,0.95)
+	var hpfill := StyleBoxFlat.new()
+	hpfill.bg_color = Color(0.58,0.055,0.07,1.0)
 	enemy_hp_bar.add_theme_stylebox_override("background", hpbg)
 	enemy_hp_bar.add_theme_stylebox_override("fill", hpfill)
-	enemy_box.add_child(enemy_hp_bar)
+	title_box.add_child(enemy_hp_bar)
+
+	battle_sprite = AnimatedSprite2D.new()
+	battle_sprite.name = "EnemyBattleSprite"
+	battle_sprite.position = Vector2(640,315)
+	battle_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	battle_sprite.animation_finished.connect(_on_battle_animation_finished)
+	root.add_child(battle_sprite)
 
 	var command_panel := PanelContainer.new()
-	command_panel.anchor_left = 0.08
-	command_panel.anchor_top = 0.52
-	command_panel.anchor_right = 0.92
-	command_panel.anchor_bottom = 0.92
-	command_panel.add_theme_stylebox_override("panel", UI.panel_style(0.99))
+	command_panel.anchor_left = 0.06
+	command_panel.anchor_top = 0.60
+	command_panel.anchor_right = 0.94
+	command_panel.anchor_bottom = 0.95
+	command_panel.add_theme_stylebox_override("panel", UI.panel_style(0.98))
 	root.add_child(command_panel)
 
 	var row := HBoxContainer.new()
@@ -93,14 +113,17 @@ func _build() -> void:
 	command_panel.add_child(row)
 
 	var commands := VBoxContainer.new()
-	commands.custom_minimum_size = Vector2(280,0)
-	commands.add_theme_constant_override("separation", 10)
+	commands.custom_minimum_size = Vector2(285,0)
+	commands.add_theme_constant_override("separation", 8)
 	row.add_child(commands)
 
+	var target_heading := UI.body_label("TARGET", 15)
+	target_heading.add_theme_color_override("font_color", Color(0.78,0.65,0.48))
+	commands.add_child(target_heading)
 	target_select = OptionButton.new()
 	for part in ["Torso", "Head", "Arm", "Leg"]:
 		target_select.add_item(part)
-	target_select.custom_minimum_size = Vector2(250,44)
+	target_select.custom_minimum_size = Vector2(250,42)
 	target_select.add_theme_font_size_override("font_size", 18)
 	commands.add_child(target_select)
 
@@ -130,26 +153,25 @@ func _build() -> void:
 
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 12)
+	info.add_theme_constant_override("separation", 10)
 	row.add_child(info)
 	player_status = UI.body_label("", 18)
 	info.add_child(player_status)
-	log_label = UI.body_label("", 19)
+	log_label = UI.body_label("", 18)
 	log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	log_label.custom_minimum_size = Vector2(0,150)
+	log_label.custom_minimum_size = Vector2(0,145)
 	info.add_child(log_label)
 
 func _update_player() -> void:
 	if player_status:
-		player_status.text = "BODY %.0f/100   MIND %.0f   HUNGER %.0f
-%s  ATK %d   •   %s  DEF %d" % [
+		player_status.text = "BODY %.0f/100   MIND %.0f   HUNGER %.0f\n%s  ATK %d   •   %s  DEF %d" % [
 			GameState.body, GameState.mind, GameState.hunger,
 			GameState.equipped_weapon, GameState.attack_power(),
 			GameState.equipped_armor, GameState.armor_defense()
 		]
 
 func _attack() -> void:
-	if current_enemy == null:
+	if current_enemy == null or attack_button.disabled:
 		return
 	var target := target_select.get_item_text(target_select.selected)
 	var hit_chance := 1.0
@@ -164,24 +186,22 @@ func _attack() -> void:
 		"Leg":
 			hit_chance = 0.90
 			multiplier = 0.85
-		_:
-			hit_chance = 1.0
 	var roll := rng.randf()
 	if roll <= hit_chance:
 		var damage: int = maxi(1, int(round((GameState.attack_power() + rng.randi_range(0,3)) * multiplier)))
-		enemy_hp = max(0, enemy_hp - damage)
+		enemy_hp = maxi(0, enemy_hp - damage)
 		enemy_hp_bar.value = enemy_hp
 		log_label.text = "You strike the %s for %d damage." % [target.to_lower(), damage]
+		if battle_sprite.sprite_frames.has_animation("hurt") and battle_sprite.sprite_frames.get_frame_count("hurt") > 0:
+			battle_sprite.play("hurt")
 		if target == "Arm" and not arm_disabled and rng.randf() < 0.45:
 			arm_disabled = true
-			enemy_attack = max(1, enemy_attack - 3)
-			log_label.text += "
-Its attacking limb is crippled."
+			enemy_attack = maxi(1, enemy_attack - 3)
+			log_label.text += "\nIts attacking limb is crippled."
 		if target == "Leg" and not leg_disabled and rng.randf() < 0.45:
 			leg_disabled = true
-			log_label.text += "
-Its movement is crippled."
-		AudioManager.play_sfx("res://assets/audio/hit.wav")
+			log_label.text += "\nIts movement is crippled."
+		AudioManager.play_event("hit")
 	else:
 		log_label.text = "Your attack misses the %s." % target.to_lower()
 	if enemy_hp <= 0:
@@ -214,20 +234,34 @@ func _flee() -> void:
 func _enemy_turn(multiplier: float) -> void:
 	if current_enemy == null:
 		return
+	if battle_sprite.sprite_frames.has_animation("attack") and battle_sprite.sprite_frames.get_frame_count("attack") > 0:
+		battle_sprite.play("attack")
 	var damage: float = maxf(1.0, float(enemy_attack) * multiplier + rng.randf_range(-1.0,2.0))
 	GameState.damage(damage, "The %s ended your descent." % enemy_name_label.text)
 	_update_player()
 	if GameState.body > 0:
-		log_label.text += "
-%s retaliates. BODY %.0f/100." % [enemy_name_label.text, GameState.body]
-		AudioManager.play_sfx("res://assets/audio/hurt.wav")
+		log_label.text += "\n%s retaliates. BODY %.0f/100." % [enemy_name_label.text, GameState.body]
+		AudioManager.play_event("hurt")
 
 func _win() -> void:
+	attack_button.disabled = true
 	log_label.text = "%s collapses." % enemy_name_label.text
 	GameState.coins += 1
 	GameState.stats_changed.emit()
 	var defeated = current_enemy
+	if battle_sprite.sprite_frames.has_animation("death") and battle_sprite.sprite_frames.get_frame_count("death") > 0:
+		battle_sprite.play("death")
+	var timer := get_tree().create_timer(0.55)
+	timer.timeout.connect(_complete_win.bind(defeated))
+
+func _complete_win(defeated) -> void:
 	root.visible = false
 	if defeated:
 		defeated.defeat()
 	battle_finished.emit(true, defeated)
+
+func _on_battle_animation_finished() -> void:
+	if not root.visible or enemy_hp <= 0:
+		return
+	if battle_sprite.sprite_frames.has_animation("idle") and battle_sprite.sprite_frames.get_frame_count("idle") > 0:
+		battle_sprite.play("idle")
