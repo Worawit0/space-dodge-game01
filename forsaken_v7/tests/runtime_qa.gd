@@ -31,22 +31,22 @@ func _run() -> void:
 		var res = load(path)
 		check(res != null, "scene loads: " + path)
 
-	GameState.reset_new_game()
-	GameState.add_weapon("Bearded Axe")
-	check(GameState.equip_weapon("Bearded Axe"), "weapon equip returns true")
-	check(GameState.equipped_weapon == "Bearded Axe", "equipped weapon state updated")
-	check(GameState.attack_power() == 7, "equipped weapon affects attack")
+	var gs = root.get_node_or_null("GameState")\n\tcheck(gs != null, "GameState autoload exists")\n\tif gs == null:\n\t\tquit(1)\n\t\treturn\n\tgs.reset_new_game()
+	gs.add_weapon("Bearded Axe")
+	check(gs.equip_weapon("Bearded Axe"), "weapon equip returns true")
+	check(gs.equipped_weapon == "Bearded Axe", "equipped weapon state updated")
+	check(gs.attack_power() == 7, "equipped weapon affects attack")
 
-	GameState.add_armor("Chainmail")
-	check(GameState.equip_armor("Chainmail"), "armor equip returns true")
-	check(GameState.armor_defense() == 3, "equipped armor affects defense")
+	gs.add_armor("Chainmail")
+	check(gs.equip_armor("Chainmail"), "armor equip returns true")
+	check(gs.armor_defense() == 3, "equipped armor affects defense")
 
 	var death_seen := false
-	GameState.game_over.connect(func(_reason): death_seen = true, CONNECT_ONE_SHOT)
-	GameState.damage(9999.0, "QA death")
+	gs.game_over.connect(func(_reason): death_seen = true, CONNECT_ONE_SHOT)
+	gs.damage(9999.0, "QA death")
 	await process_frame
 	check(death_seen, "death signal fires")
-	GameState.reset_new_game()
+	gs.reset_new_game()
 
 	var door_res = load("res://scenes/world/door.tscn")
 	var door = door_res.instantiate()
@@ -56,7 +56,7 @@ func _run() -> void:
 	await process_frame
 	door.interact(null)
 	check(door.opening == false, "locked door stays closed without key")
-	GameState.add_key_item("Rust Key")
+	gs.add_key_item("Rust Key")
 	door.interact(null)
 	check(door.opening == true, "door begins animation with key")
 	door._process(2.0)
