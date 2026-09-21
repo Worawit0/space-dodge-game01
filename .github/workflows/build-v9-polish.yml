@@ -194,20 +194,20 @@ jobs:
 
               ok(world.player != null, "player spawned")
               ok(world.player.weapon_sprite != null, "equipped weapon visual node exists")
-              var sword_path := world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
+              var sword_path: String = world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
               ok(sword_path.ends_with("rusted_sword.png"), "default sword visual is visible")
 
               gs.add_weapon("Bearded Axe")
               ok(gs.equip_weapon("Bearded Axe"), "equip axe succeeds")
               await process_frame
-              var axe_path := world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
+              var axe_path: String = world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
               ok(axe_path.ends_with("bearded_axe.png"), "axe changes the player's visible weapon")
               ok(world.player.weapon_sprite.scale.x >= 2.7, "axe visual is large enough to read")
 
               gs.add_weapon("Greatsword")
               ok(gs.equip_weapon("Greatsword"), "equip greatsword succeeds")
               await process_frame
-              var great_path := world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
+              var great_path: String = world.player.weapon_sprite.texture.resource_path if world.player.weapon_sprite.texture else ""
               ok(great_path.ends_with("greatsword.png"), "greatsword changes the player's visible weapon")
               ok(great_path != axe_path and axe_path != sword_path, "all three weapon visuals are distinct")
 
