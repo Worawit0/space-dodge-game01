@@ -6,6 +6,7 @@ const UI = preload("res://scripts/ui/ui_factory.gd")
 
 var root: Control
 var item_list: ItemList
+var preview: TextureRect
 var detail_title: Label
 var detail_text: Label
 var stats_text: Label
@@ -34,6 +35,9 @@ func close() -> void:
 	AudioManager.play_ui()
 	closed.emit()
 
+func _icon_path(name: String) -> String:
+	return "res://assets/v8/items/" + name.to_lower().replace(" ","_").replace("-","_") + ".png"
+
 func _build() -> void:
 	root = Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -41,21 +45,21 @@ func _build() -> void:
 	add_child(root)
 
 	var dim := ColorRect.new()
-	dim.color = Color(0,0,0,0.82)
+	dim.color = Color(0,0,0,0.86)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
 
 	var panel := PanelContainer.new()
-	panel.anchor_left = 0.07
-	panel.anchor_top = 0.07
-	panel.anchor_right = 0.93
-	panel.anchor_bottom = 0.93
+	panel.anchor_left = 0.055
+	panel.anchor_top = 0.055
+	panel.anchor_right = 0.945
+	panel.anchor_bottom = 0.945
 	panel.add_theme_stylebox_override("panel", UI.panel_style(0.985))
 	root.add_child(panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_left", 30)
+	margin.add_theme_constant_override("margin_right", 30)
 	margin.add_theme_constant_override("margin_top", 24)
 	margin.add_theme_constant_override("margin_bottom", 24)
 	panel.add_child(margin)
@@ -68,7 +72,7 @@ func _build() -> void:
 	var cats := HBoxContainer.new()
 	cats.add_theme_constant_override("separation", 8)
 	outer.add_child(cats)
-	for c in ["Items", "Weapons", "Armor", "Key Items"]:
+	for c in ["Items","Weapons","Armor","Key Items"]:
 		var b := Button.new()
 		b.text = c.to_upper()
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -78,34 +82,48 @@ func _build() -> void:
 
 	var split := HSplitContainer.new()
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	split.split_offset = 430
+	split.split_offset = 440
 	outer.add_child(split)
 
 	item_list = ItemList.new()
-	item_list.custom_minimum_size = Vector2(420, 0)
-	item_list.add_theme_font_size_override("font_size", 19)
+	item_list.custom_minimum_size = Vector2(420,0)
+	UI.style_item_list(item_list)
 	item_list.item_selected.connect(_on_selected)
 	split.add_child(item_list)
 
 	var right := VBoxContainer.new()
-	right.add_theme_constant_override("separation", 14)
+	right.add_theme_constant_override("separation", 12)
 	split.add_child(right)
 
-	detail_title = UI.title_label("Select an item", 26)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 18)
+	right.add_child(top)
+
+	var preview_panel := PanelContainer.new()
+	preview_panel.custom_minimum_size = Vector2(132,132)
+	preview_panel.add_theme_stylebox_override("panel", UI.panel_style(0.84))
+	top.add_child(preview_panel)
+	preview = TextureRect.new()
+	preview.custom_minimum_size = Vector2(104,104)
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	preview_panel.add_child(preview)
+
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title_box)
+	detail_title = UI.title_label("Select an item",26)
 	detail_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	right.add_child(detail_title)
+	title_box.add_child(detail_title)
+	stats_text = UI.body_label("",16)
+	stats_text.add_theme_color_override("font_color",Color(0.82,0.72,0.52))
+	title_box.add_child(stats_text)
 
-	detail_text = UI.body_label("", 18)
-	detail_text.custom_minimum_size = Vector2(0, 140)
+	detail_text = UI.body_label("",18)
+	detail_text.custom_minimum_size = Vector2(0,120)
+	detail_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(detail_text)
-
-	stats_text = UI.body_label("", 18)
-	stats_text.add_theme_color_override("font_color", Color(0.82,0.72,0.52))
-	right.add_child(stats_text)
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right.add_child(spacer)
 
 	action_button = Button.new()
 	action_button.text = "ACTION"
@@ -134,31 +152,30 @@ func refresh() -> void:
 			for name in GameState.consumables.keys():
 				if int(GameState.consumables[name]) > 0:
 					entries.append(str(name))
-					item_list.add_item("%s   x%d" % [name, int(GameState.consumables[name])])
+					item_list.add_item("%s   x%d" % [name,int(GameState.consumables[name])])
 		"Weapons":
 			for name in GameState.owned_weapons:
 				entries.append(str(name))
 				var mark := "  ✓ EQUIPPED" if name == GameState.equipped_weapon else ""
-				item_list.add_item("%s   ATK +%d%s" % [name, int(GameState.WEAPONS[name].attack), mark])
+				item_list.add_item("%s   ATK +%d%s" % [name,int(GameState.WEAPONS[name].attack),mark])
 		"Armor":
 			for name in GameState.owned_armor:
 				entries.append(str(name))
 				var mark := "  ✓ EQUIPPED" if name == GameState.equipped_armor else ""
-				item_list.add_item("%s   DEF +%d%s" % [name, int(GameState.ARMOR[name].defense), mark])
+				item_list.add_item("%s   DEF +%d%s" % [name,int(GameState.ARMOR[name].defense),mark])
 		"Key Items":
 			for name in GameState.key_items:
 				entries.append(str(name))
 				item_list.add_item(str(name))
-	stats_text.text = "BODY %.0f/100   MIND %.0f   HUNGER %.0f   TORCH %.0f
-Weapon: %s (ATK %d)
-Armor: %s (DEF %d)" % [
-		GameState.body, GameState.mind, GameState.hunger, GameState.torch,
-		GameState.equipped_weapon, GameState.attack_power(),
-		GameState.equipped_armor, GameState.armor_defense()
+	stats_text.text = "BODY %.0f   MIND %.0f   HUNGER %.0f   TORCH %.0f\n%s  ATK %d\n%s  DEF %d" % [
+		GameState.body,GameState.mind,GameState.hunger,GameState.torch,
+		GameState.equipped_weapon,GameState.attack_power(),
+		GameState.equipped_armor,GameState.armor_defense()
 	]
 	if entries.is_empty():
 		detail_title.text = "Nothing here"
 		detail_text.text = "This category is empty."
+		preview.texture = null
 		action_button.disabled = true
 	else:
 		item_list.select(0)
@@ -172,6 +189,8 @@ func _show_entry(index: int) -> void:
 		return
 	var name := entries[index]
 	detail_title.text = name
+	var icon := _icon_path(name)
+	preview.texture = load(icon) if ResourceLoader.exists(icon) else null
 	match category:
 		"Items":
 			detail_text.text = _item_description(name)
@@ -193,7 +212,7 @@ func _show_entry(index: int) -> void:
 func _item_description(name: String) -> String:
 	match name:
 		"Ration": return "Restores hunger. Food is scarce below."
-		"Bandage": return "Restores BODY. Essential after a bad encounter."
+		"Bandage": return "Restores BODY and keeps you alive after a bad encounter."
 		"Blue Vial": return "Restores MIND and steadies the nerves."
 		"Torch Oil": return "Refills the torch reserve."
 		_: return "A survival item."
