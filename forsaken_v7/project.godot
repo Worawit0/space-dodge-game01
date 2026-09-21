@@ -1,0 +1,30 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+config/name="The Forsaken Depths - Structured V7"
+run/main_scene="res://scenes/main/main.tscn"
+config/features=PackedStringArray("4.7")
+
+[autoload]
+GameState="*res://scripts/systems/game_state.gd"
+AudioManager="*res://scripts/systems/audio_manager.gd"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/size/mode=3
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.006,0.005,0.008,1)
+
+[physics]
+common/physics_ticks_per_second=60
